@@ -2,7 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MiotTransport } from '../miio/transport.js';
 import type { MiotProperty } from './profiles.js';
-import { hasVacuumFault, type MiotAction, type VacuumProfile, type VacuumProperty, type VacuumState, type WritableVacuumProperty } from './vacuum-profile.js';
+import { faultBlocksCleaningMode, vacuumFaultDescription, type MiotAction, type VacuumProfile, type VacuumProperty, type VacuumState, type WritableVacuumProperty } from './vacuum-profile.js';
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -87,7 +87,7 @@ export class VacuumDevice {
 
   start(): Promise<VacuumState> { return this.action(this.profile.actions.start, [5, 6, 7]); }
   resume(): Promise<VacuumState> { return this.start(); }
-  stop(): Promise<VacuumState> { return this.action(this.profile.actions.stop, [2]); }
+  stop(): Promise<VacuumState> { return this.action(this.profile.actions.stop, this.profile.pauseStatuses); }
   // E10 has no separate standard pause action. stop-sweeping is the MIoT
   // integration's pause fallback; always retain the state returned by firmware.
   pause(): Promise<VacuumState> { return this.stop(); }
@@ -110,8 +110,11 @@ export class VacuumDevice {
       // Matter permits reasserting the current mode in any state. A repeated
       // preset must neither change settings nor turn a physical pause into an error.
       if (changes.every(([name, value]) => state[name] === value)) return state;
-      if (hasVacuumFault(this.profile, state.fault)) {
-        throw new VacuumStateError(`Cannot change cleaning settings while Xiaomi fault ${state.fault} is active.`, state);
+      // Changing a preset does not start any motor. A fault therefore blocks
+      // only modes made impossible by that specific fault; unknown mechanical
+      // faults may still be configured while Start remains device-authoritative.
+      if (faultBlocksCleaningMode(this.profile, state.fault, settings.mode)) {
+        throw new VacuumStateError(vacuumFaultDescription(this.profile, state.fault), state);
       }
       if (![0, 1, 4].includes(state.status)) {
         const activity = this.profile.statuses[state.status] ?? `status ${state.status}`;

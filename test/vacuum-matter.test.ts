@@ -22,6 +22,7 @@ class VacuumEmulator implements MiotTransport {
   acknowledgementCode = 0;
   propertyDelayReads = 0;
   actionDelayReads = 0;
+  stopStatus = 2;
   ignorePropertyWrites = false;
   private readonly pending = new Map<string, { value: number; reads: number }>();
   ignoreActions = false;
@@ -43,7 +44,7 @@ class VacuumEmulator implements MiotTransport {
       const action = params as { siid: number; aiid: number };
       this.actions.push(action);
       if (!this.rejectActions && !this.ignoreActions) {
-        const value = action.siid === 3 ? 3 : action.aiid === 2 ? 2 : 5;
+        const value = action.siid === 3 ? 3 : action.aiid === 2 ? this.stopStatus : 5;
         if (this.actionDelayReads > 0) this.pending.set('2/1', { value, reads: this.actionDelayReads });
         else this.values.set('2/1', value);
       }
@@ -70,22 +71,22 @@ class VacuumEmulator implements MiotTransport {
   close(): void { this.closed = true; }
 }
 
-function fixture() {
+function fixture(model = 'xiaomi.vacuum.b112', name = 'E10', matterStatus: typeof MatterStatus | undefined = MatterStatus) {
   const emulator = new VacuumEmulator();
   const warnings: string[] = [];
   const logs: string[] = [];
   const debug: string[] = [];
   const updates: Array<{ cluster: string; attributes: Record<string, unknown> }> = [];
   const matter = {
-    types: clusters, deviceTypes, status: MatterStatus,
+    types: clusters, deviceTypes, status: matterStatus,
     getAccessoryState: async (_uuid: string, cluster: string) => accessory.clusters![cluster],
     updateAccessoryState: async (_uuid: string, cluster: string, attributes: Record<string, unknown>) => {
       updates.push({ cluster, attributes });
     },
   } as unknown as MatterAPI;
   const logger = { debug: (message: string) => debug.push(message), warn: (message: string) => warnings.push(message), info: (message: string) => logs.push(message) } as unknown as Logger;
-  const controller = new VacuumAccessory({ matter } as API, logger, hap.uuid.generate('vacuum-did-1000'), {
-    model: 'xiaomi.vacuum.b112', name: 'E10', host: '192.0.2.50', token: 'a'.repeat(32), did: '1000',
+  const controller = new VacuumAccessory({ matter } as API, logger, hap.uuid.generate(`vacuum-${model}-1000`), {
+    model, name, host: '192.0.2.50', token: 'a'.repeat(32), did: '1000',
   }, emulator, 15);
   const accessory = controller.accessory;
   const state = (cluster: string) => accessory.clusters![cluster]!;
@@ -101,12 +102,39 @@ test('E10 is a native Matter vacuum with cleaning modes and no switch, fan or in
   assert.equal(f.accessory.deviceType, deviceTypes.RoboticVacuumCleaner);
   assert.equal(f.accessory.deviceType.deviceType, 0x74);
   assert.deepEqual(Object.keys(f.accessory.clusters!).sort(), ['identify', 'powerSource', 'rvcCleanMode', 'rvcOperationalState', 'rvcRunMode']);
-  assert.equal((f.state('rvcCleanMode').supportedModes as unknown[]).length, 17);
+  assert.equal((f.state('rvcCleanMode').supportedModes as unknown[]).length, 14);
   assert.deepEqual((f.state('rvcCleanMode').supportedModes as unknown[]).slice(0, 3), [
     { label: 'Vacuum', mode: 0, modeTags: [{ value: 0x4001 }] },
     { label: 'Vacuum and mop', mode: 1, modeTags: [{ value: 0x4001 }, { value: 0x4002 }] },
     { label: 'Mop', mode: 2, modeTags: [{ value: 0x4002 }] },
   ]);
+  assert.deepEqual((f.state('rvcCleanMode').supportedModes as Array<{ mode: number }>).filter(mode => [10, 11, 12, 13].includes(mode.mode)), [
+    { label: 'Vacuum: Silent', mode: 10, modeTags: [{ value: 0x4001 }, { value: 6 }, { value: 2 }, { value: 3 }] },
+    { label: 'Vacuum: Standard', mode: 11, modeTags: [{ value: 0x4001 }, { value: 0 }] },
+    { label: 'Vacuum: Medium', mode: 12, modeTags: [{ value: 0x4001 }, { value: 0x4000 }] },
+    { label: 'Vacuum: Turbo', mode: 13, modeTags: [{ value: 0x4001 }, { value: 7 }] },
+  ]);
+  assert.deepEqual((f.state('rvcCleanMode').supportedModes as Array<{ mode: number; label: string }>).filter(mode => [30, 31, 32].includes(mode.mode)).map(({ mode, label }) => ({ mode, label })), [
+    { mode: 30, label: 'Mop: water Low' },
+    { mode: 31, label: 'Mop: water Medium' },
+    { mode: 32, label: 'Mop: water High' },
+  ]);
+  assert.deepEqual(VACUUM_CLEAN_MODES.filter(mode => [20, 21, 22, 23].includes(mode.mode))
+    .map(({ mode, label, settings }) => ({ mode, label, settings })), [
+      { mode: 20, label: 'Vacuum and mop: Silent', settings: { mode: 1, suction: 1, water: 1 } },
+      { mode: 21, label: 'Vacuum and mop: Standard', settings: { mode: 1, suction: 2, water: 2 } },
+      { mode: 22, label: 'Vacuum and mop: Maximum', settings: { mode: 1, suction: 3, water: 3 } },
+      { mode: 23, label: 'Vacuum and mop: Turbo', settings: { mode: 1, suction: 4, water: 3 } },
+    ]);
+  const tagSets = (f.state('rvcCleanMode').supportedModes as Array<{ modeTags: Array<{ value: number }> }>)
+    .map(({ modeTags }) => modeTags.map(({ value }) => value).sort((a, b) => a - b).join(','));
+  assert.equal(new Set(tagSets).size, tagSets.length, 'Matter requires a unique mode-tag set for every clean mode');
+  assert.deepEqual((f.state('rvcCleanMode').supportedModes as Array<{ mode: number; modeTags: Array<{ value: number }> }>)
+    .filter(mode => [30, 31, 32].includes(mode.mode)).map(({ mode, modeTags }) => ({ mode, tags: modeTags.map(tag => tag.value) })), [
+      { mode: 30, tags: [0x4002, 6] },
+      { mode: 31, tags: [0x4002, 0] },
+      { mode: 32, tags: [0x4002, 7] },
+    ]);
   assert.equal(f.state('rvcOperationalState').operationalState, clusters.RvcOperationalState.OperationalState.Error);
   assert.equal(f.state('powerSource').batPercentRemaining, null);
   assert.equal(f.state('identify').identifyType, 3);
@@ -127,6 +155,92 @@ test('native state follows MIoT readings and battery uses Matter half-percent un
     assert.equal(f.state('powerSource').batChargeState, status === 4 ? 1 : 3);
   }
   f.controller.stop();
+});
+
+test('state diagnostics report transitions once and preserve raw E12 charging values', async () => {
+  const f = fixture('xiaomi.vacuum.b112gl', 'E12');
+  try {
+    f.emulator.values.set('2/1', 4);
+    f.emulator.values.set('2/2', 2103);
+    f.emulator.values.set('3/1', 22);
+    await f.controller.refresh();
+    await f.controller.refresh();
+    assert.equal(f.state('rvcOperationalState').operationalState, 65);
+    assert.deepEqual(f.state('rvcOperationalState').operationalError, { errorStateId: 0, errorStateDetails: '' });
+    assert.equal(f.logs.filter(line => line.includes('state Charging')).length, 1);
+    assert.match(f.logs.find(line => line.includes('state Charging'))!, /status=4, fault=2103, mode=0, suction=1, water=1, battery=22%/);
+
+    f.emulator.values.set('2/1', 5);
+    f.emulator.values.set('2/2', 0);
+    await f.controller.refresh();
+    assert.match(f.logs.at(-1)!, /state Vacuuming \(status=5, fault=0/);
+  } finally { f.controller.stop(); }
+});
+
+test('E12 Pause accepts its observed Idle result and older status APIs never cause a TypeError', async () => {
+  const f = fixture('xiaomi.vacuum.b112gl', 'E12', undefined);
+  try {
+    f.emulator.values.set('2/1', 5);
+    f.emulator.stopStatus = 1;
+    await f.command('rvcOperationalState', 'pause');
+    assert.equal(f.state('rvcOperationalState').operationalState, 0);
+    assert.equal(f.state('rvcRunMode').currentMode, 0);
+    assert.equal(f.warnings.length, 0);
+
+    f.emulator.ignoreActions = true;
+    f.emulator.values.set('2/1', 1);
+    const rejection = await f.command('rvcOperationalState', 'resume').then(() => undefined, error => error as Error);
+    assert.ok(rejection instanceof Error);
+    assert.doesNotMatch(String(rejection), /Cannot read properties of undefined|TypeError/);
+    const invalidMode = await f.command('rvcCleanMode', 'changeToMode', { newMode: 255 }).then(() => undefined, error => error as Error);
+    assert.ok(invalidMode instanceof Error);
+    assert.doesNotMatch(String(invalidMode), /Cannot read properties of undefined|TypeError/);
+  } finally { f.controller.stop(); }
+});
+
+test('E12 fault details fit Matter limits and Pause does not command a charging robot', async () => {
+  const f = fixture('xiaomi.vacuum.b112gl', 'E12', undefined);
+  try {
+    f.emulator.values.set('2/1', 4);
+    f.emulator.values.set('2/2', 522);
+    await f.controller.refresh();
+    const error = f.state('rvcOperationalState').operationalError as { errorStateId: unknown; errorStateDetails: unknown };
+    const details = String(error.errorStateDetails);
+    assert.equal(error.errorStateId, 71, 'MIoT 522 maps to Matter MopCleaningPadMissing');
+    assert.ok([...details].length <= 64);
+    assert.match(details, /Mop pad is not installed/);
+    const actions = f.emulator.actions.length;
+    const rejection = await f.command('rvcOperationalState', 'pause').then(() => undefined, error => error as Error);
+    assert.ok(rejection instanceof Error);
+    assert.match(rejection.message, /Cannot pause while charging/);
+    assert.equal(f.emulator.actions.length, actions, 'Invalid Pause must not send stop-sweeping');
+    assert.equal(f.state('rvcOperationalState').operationalState, 3, 'The real fault remains published');
+  } finally { f.controller.stop(); }
+});
+
+test('E12 B112-family faults map to native Matter RVC errors', async () => {
+  const f = fixture('xiaomi.vacuum.b112gl', 'E12');
+  try {
+    const cases: ReadonlyArray<readonly [number, number]> = [
+      [500, 78], [501, 76], [502, 72], [503, 66], [508, 65],
+      [509, 78], [510, 78], [511, 64], [512, 64], [513, 73],
+      [514, 65], [521, 69], [522, 71], [525, 68], [528, 66],
+      [529, 69], [530, 69], [531, 69], [2101, 72],
+    ];
+    for (const [fault, matterError] of cases) {
+      f.emulator.values.set('2/2', fault);
+      await f.controller.refresh();
+      const error = f.state('rvcOperationalState').operationalError as { errorStateId: unknown; errorStateDetails: unknown };
+      assert.equal(error.errorStateId, matterError, `MIoT fault ${fault}`);
+      assert.ok([...String(error.errorStateDetails)].length <= 64, `MIoT fault ${fault} details`);
+    }
+    for (const indication of [2103, 2104]) {
+      f.emulator.values.set('2/2', indication);
+      await f.controller.refresh();
+      const error = f.state('rvcOperationalState').operationalError as { errorStateId: unknown };
+      assert.equal(error.errorStateId, 0);
+    }
+  } finally { f.controller.stop(); }
 });
 
 test('native start, pause, resume, dock and Stop use the verified MIoT actions', async () => {
@@ -156,7 +270,7 @@ test('cleaning-mode validation prevents unsupported or active-state writes', asy
   await assert.rejects(f.command('rvcRunMode', 'changeToMode', { newMode: 2 }), MatterStatus.ConstraintError);
   for (const status of [2, 3, 5, 6, 7, 8]) {
     f.emulator.values.set('2/1', status);
-    await assert.rejects(f.command('rvcCleanMode', 'changeToMode', { newMode: 0 }), MatterStatus.InvalidInState);
+    await assert.rejects(f.command('rvcCleanMode', 'changeToMode', { newMode: 0 }), MatterStatus.Failure);
   }
   assert.equal(f.emulator.writes.length, 1);
   assert.equal(f.warnings.length, 0, 'An invalid user request is not a communication failure');
@@ -179,7 +293,7 @@ test('device faults, consumables and connection failures remain distinct and rec
   await f.controller.refresh();
   assert.equal(f.state('rvcOperationalState').operationalState, 3);
   assert.match(JSON.stringify(f.state('rvcOperationalState').operationalError), /Xiaomi error 145/);
-  assert.equal(f.warnings.filter(line => line.includes('Xiaomi device error')).length, 1);
+  assert.equal(f.warnings.filter(line => line.includes('Xiaomi error 145')).length, 1);
   assert.equal(f.warnings.filter(line => line.includes('filter life')).length, 1);
   f.emulator.offline = true;
   await f.controller.refresh();
@@ -215,6 +329,21 @@ test('rejected actions produce a native Matter failure instead of optimistic suc
   assert.equal(f.emulator.reads, calls);
 });
 
+test('a Matter publication failure is not misreported as robot connectivity loss', async () => {
+  const f = fixture();
+  try {
+    await f.controller.refresh();
+    const updatesBefore = f.updates.length;
+    f.matter.updateAccessoryState = async () => { throw new Error('Matter endpoint rejected update'); };
+    await assert.rejects(f.command('rvcRunMode', 'changeToMode', { newMode: 1 }), MatterStatus.Failure);
+    assert.equal(f.emulator.actions.length, 1, 'The robot command was sent and confirmed');
+    assert.equal(f.emulator.values.get('2/1'), 5, 'The robot really started');
+    assert.equal(f.updates.length, updatesBefore, 'No fake unavailable state was published');
+    assert.ok(f.warnings.some(line => line.includes('cannot update Matter state')));
+    assert.ok(f.warnings.every(line => !line.includes(': unavailable')));
+  } finally { f.controller.stop(); }
+});
+
 test('start clears restored health and battery before polling, shutdown cancels polling', async () => {
   const f = fixture();
   f.emulator.offline = true;
@@ -234,22 +363,22 @@ test('native suction and water presets round-trip without changing unnamed setti
   await f.command('rvcCleanMode', 'changeToMode', { newMode: 23 });
   assert.equal(f.emulator.values.get('2/4'), 1);
   assert.equal(f.emulator.values.get('7/5'), 4);
-  assert.equal(f.emulator.values.get('7/6'), 1);
+  assert.equal(f.emulator.values.get('7/6'), 3);
   assert.equal(f.state('rvcCleanMode').currentMode, 23);
   await f.controller.refresh();
   assert.equal(f.state('rvcCleanMode').currentMode, 23);
-  await f.command('rvcCleanMode', 'changeToMode', { newMode: 42 });
+  await f.command('rvcCleanMode', 'changeToMode', { newMode: 30 });
   assert.equal(f.emulator.values.get('7/5'), 4);
-  assert.equal(f.emulator.values.get('7/6'), 3);
-  assert.equal(f.state('rvcCleanMode').currentMode, 42);
+  assert.equal(f.emulator.values.get('7/6'), 1);
+  assert.equal(f.state('rvcCleanMode').currentMode, 30);
   f.emulator.values.set('7/6', 2);
   await f.controller.refresh();
-  assert.equal(f.state('rvcCleanMode').currentMode, 1, 'An externally changed level invalidates the selected preset');
+  assert.equal(f.state('rvcCleanMode').currentMode, 2, 'An externally changed level invalidates the selected preset');
   await f.command('rvcCleanMode', 'changeToMode', { newMode: 0 });
   assert.equal(f.emulator.values.get('7/5'), 4);
   assert.equal(f.emulator.values.get('7/6'), 2);
   assert.equal(f.state('rvcCleanMode').currentMode, 0);
-  assert.equal(new Set(VACUUM_CLEAN_MODES.map(mode => mode.mode)).size, 17);
+  assert.equal(new Set(VACUUM_CLEAN_MODES.map(mode => mode.mode)).size, 14);
   f.controller.stop();
 });
 
@@ -295,7 +424,7 @@ test('Homebridge creates the real Matter endpoint, validates updates and routes 
     assert.equal(read('powerSource').featureMap.battery, true);
     assert.equal(read('powerSource').featureMap.rechargeable, true);
     assert.ok(read('descriptor').deviceTypeList.some((entry: { deviceType: number }) => entry.deviceType === 0x11));
-    assert.equal(read('rvcCleanMode').supportedModes.length, 17);
+    assert.equal(read('rvcCleanMode').supportedModes.length, 14);
     // Clearing an error is a nested struct update. Omitted fields are merged,
     // so a correct ID alone does not guarantee that stale error text is gone.
     await f.controller.refresh();
@@ -319,9 +448,9 @@ test('Homebridge creates the real Matter endpoint, validates updates and routes 
     f.emulator.acknowledgementCode = 1;
     f.emulator.propertyDelayReads = 2;
     f.emulator.actionDelayReads = 2;
-    await server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 42 });
+    await server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 23 });
     await flush();
-    assert.equal(read('rvcCleanMode').currentMode, 42);
+    assert.equal(read('rvcCleanMode').currentMode, 23);
     await server.triggerCommand(f.accessory.UUID, 'rvcRunMode', 'changeToMode', { newMode: 1 });
     await flush();
     assert.equal(read('rvcOperationalState').operationalState, 1);
@@ -337,16 +466,16 @@ test('Homebridge creates the real Matter endpoint, validates updates and routes 
     // Exercise the full Homebridge handler -> matter.js base behavior sequence.
     f.emulator.values.set('2/2', 2105);
     f.emulator.values.set('3/1', 100);
-    await server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 42 });
+    await server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 23 });
     await flush();
     await server.triggerCommand(f.accessory.UUID, 'rvcRunMode', 'changeToMode', { newMode: 1 });
     await flush();
     assert.equal(read('rvcOperationalState').operationalState, 2);
     assert.equal(read('rvcOperationalState').operationalError.errorStateId, 0);
-    assert.equal(read('rvcCleanMode').currentMode, 42);
+    assert.equal(read('rvcCleanMode').currentMode, 23);
     assert.equal(f.emulator.actions.length, pausedActions);
     assert.equal(f.emulator.writes.length, pausedWrites);
-    await assert.rejects(server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 41 }));
+    await assert.rejects(server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 22 }));
     await flush();
     assert.equal(read('rvcOperationalState').operationalState, 2, 'Rejecting an actual setting change is not a robot fault');
     assert.equal(read('rvcOperationalState').operationalError.errorStateId, 0);
@@ -354,7 +483,7 @@ test('Homebridge creates the real Matter endpoint, validates updates and routes 
     f.emulator.values.set('3/1', 74);
     await assert.rejects(server.triggerCommand(f.accessory.UUID, 'rvcCleanMode', 'changeToMode', { newMode: 0 }));
     await flush();
-    assert.equal(read('rvcCleanMode').currentMode, 42);
+    assert.equal(read('rvcCleanMode').currentMode, 23);
     f.emulator.ignoreActions = true;
     f.emulator.values.set('2/1', 4);
     await f.controller.refresh();
@@ -414,7 +543,9 @@ test('physical pause, return and a full-charge indication remain native states w
     assert.match(JSON.stringify(f.state('rvcOperationalState').operationalError), /2531/);
     await f.command('rvcCleanMode', 'changeToMode', { newMode: 0 });
     assert.equal(f.state('rvcOperationalState').operationalState, 3, 'No-op does not clear an unknown fault');
-    await assert.rejects(f.command('rvcCleanMode', 'changeToMode', { newMode: 2 }), MatterStatus.InvalidInState);
+    await f.command('rvcCleanMode', 'changeToMode', { newMode: 2 });
+    assert.equal(f.state('rvcCleanMode').currentMode, 2, 'Unknown faults remain visible but do not lock harmless preset selection');
+    assert.equal(f.state('rvcOperationalState').operationalState, 3);
     f.emulator.values.set('2/2', 2105);
     await f.controller.refresh();
     assert.equal(f.state('rvcOperationalState').operationalState, 65);

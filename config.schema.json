@@ -52,9 +52,10 @@
               "enum": [
                 "zhimi.airp.cpa4",
                 "xiaomi.airp.cpa4",
-                "xiaomi.vacuum.b112"
+                "xiaomi.vacuum.b112",
+                "xiaomi.vacuum.b112gl"
               ],
-              "description": "Model identifier from Xiaomi Home. The E10 requires Matter enabled in Homebridge 2.4+ and separate Matter pairing in Apple Home."
+              "description": "Model identifier from Xiaomi Home. The E10 and E12 require Matter enabled in Homebridge 2.4+ and separate Matter pairing in Apple Home."
             },
             "host": {
               "title": "Local IPv4 address",
