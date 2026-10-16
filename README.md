@@ -2,7 +2,7 @@
 
 A community fork of [`@twinforce/homebridge-miot`](https://github.com/TwinForceIT/homebridge-miot) focused on native Apple Home Matter support for Xiaomi Robot Vacuum E10 and E12. Runtime control is local through miIO/MIoT; Xiaomi Cloud is used only during setup.
 
-> This fork retains the package identifier `@twinforce/homebridge-miot` for Homebridge compatibility. It is maintained independently at [`dmtrwff/homebridge-miot-e12`](https://github.com/dmtrwff/homebridge-miot-e12) and is not an official TwinForceIT, Xiaomi, Apple, or Homebridge release.
+> This fork is published independently as [`homebridge-miot-e12`](https://www.npmjs.com/package/homebridge-miot-e12). It is maintained at [`dmtrwff/homebridge-miot-e12`](https://github.com/dmtrwff/homebridge-miot-e12) and is not an official TwinForceIT, Xiaomi, Apple, or Homebridge release.
 
 | Device | MIoT model | Apple Home integration |
 | --- | --- | --- |
@@ -118,7 +118,22 @@ Matter must be enabled on the actual main or child bridge that runs this plugin.
 
 ## Installation of this fork
 
-This fork is not published under the original author's npm namespace. Installing `@twinforce/homebridge-miot` from npm may therefore install the upstream release without the E12 changes documented here. Build an installable archive from this repository instead.
+Install the maintained E12 fork directly from npm:
+
+```sh
+sudo npm install -g homebridge-miot-e12
+```
+
+Use the npm executable belonging to the same Node.js installation as Homebridge. For the macOS installation used during E12 hardware testing, that command is:
+
+```sh
+sudo /usr/local/bin/npm install -g homebridge-miot-e12
+sudo hb-service restart
+```
+
+Do not install this fork together with `@twinforce/homebridge-miot`: both packages register the same Homebridge platform. Preserve the existing `platform: "XiaomiMiot"` configuration, accessory cache, Matter storage, and `xiaomi-miot-matter-identities.json` when switching packages.
+
+To build an installable archive from source instead:
 
 On a computer with Git, Node.js and npm:
 
@@ -130,14 +145,14 @@ npm run check
 npm pack
 ```
 
-Copy the generated `twinforce-homebridge-miot-0.2.2-e12.16.tgz` to the Homebridge host. For the macOS installation used during E12 hardware testing:
+Copy the generated `homebridge-miot-e12-0.2.2-e12.17.tgz` to the Homebridge host. For the macOS installation used during E12 hardware testing:
 
 ```sh
-sudo /usr/local/bin/npm install -g --force ./twinforce-homebridge-miot-0.2.2-e12.16.tgz
+sudo /usr/local/bin/npm install -g --force ./homebridge-miot-e12-0.2.2-e12.17.tgz
 sudo hb-service restart
 ```
 
-Use the npm executable belonging to the same Node.js installation as Homebridge. Other managed installations and Docker deployments may use a different plugin directory; install the archive through that environment rather than an unrelated global npm directory. Preserve the existing `platform: "XiaomiMiot"` configuration, accessory cache, Matter storage, and `xiaomi-miot-matter-identities.json`. Do not load this fork and the upstream package simultaneously because both register the same Homebridge platform.
+Other managed installations and Docker deployments may use a different plugin directory; install the package through that environment rather than an unrelated global npm directory.
 
 To update a source checkout later:
 
