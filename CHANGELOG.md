@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Add Xiaomi Robot Vacuum E12 (`xiaomi.vacuum.b112gl`) as a separate native Matter vacuum profile, verified against Xiaomi's published MIoT specification and awaiting physical-device acceptance testing.
+- Treat E12 code `2103` as its normal charging indication after observing it with status `4` at 22% battery; do not extend the E10-only `2105` exception without an E12 hardware observation.
+- Avoid a command-handler `TypeError` on Homebridge Matter API builds whose runtime status object omits `InvalidInState`; rejected state-dependent commands now use the universally available Matter failure response while retaining the native RVC operational error.
+- Tag E12 suction presets with standard Matter Quiet, Min, DeepClean, and Max mode tags and use friendly labels so Apple Home can distinguish power levels instead of collapsing identical Vacuum-tagged modes.
+- Match the Xiaomi E12 app's exact level names: Silent, Standard, Medium, and Turbo for suction; Low, Medium, and High for water flow.
+- Log concise state transitions with raw status, fault, cleaning mode, suction, water, and battery values, allowing E12 firmware behavior to be verified without noisy battery-only poll logs.
+- Accept E12's observed `Idle` result from `stop-sweeping` as a completed Matter Pause request while publishing the truthful stopped state, and fall back to a plain protocol failure on older Homebridge runtimes that omit typed `Failure` and `InvalidInState` constructors.
+- Give every water-level preset a unique standards-based Matter mode-tag set; identical Mop tags violated the Mode Base invariant and caused Apple Home to collapse or hide the choices after Mop was selected.
+- Match Xiaomi Home for standalone Vacuum and Mop controls, and simplify Vacuum-and-mop into four complete presets: Silent+Low, Standard+Medium, Maximum (Medium+High), and Turbo+High.
+- Handle Homebridge Matter runtimes that omit the entire protocol-status helper object, not only individual error constructors; failed and invalid commands now fall back safely without a handler `TypeError`.
+- Describe the observed E12 fault `522` as a missing mop pad, keep wet modes blocked while it is active, and allow switching back to Vacuum so the user cannot become trapped in an unavailable mop mode.
+- Audit fault gating so errors restrict only incompatible clean modes: unknown mechanical faults no longer lock harmless preset selection, while robot Start remains authoritative and missing-mop fault `522` blocks only wet modes.
+- Bound native Matter operational-error details to the required 64-character maximum so descriptive faults cannot roll back endpoint updates, and reject Pause immediately outside active cleaning without sending a pointless stop command.
+- Map confirmed Xiaomi fault `522` to Matter's native `MopCleaningPadMissing` error instead of a generic operation failure, with an extensible typed mapping for future verified E12 faults.
+- Add the B112-family miIO fault table to the E12 profile, translating navigation, wheel, battery, bin, dock, tank and mop faults into native Matter RVC error categories; keep ambiguous charging and mop-temperature faults generic and treat charging/full-charge indications as healthy.
+- Consolidate each vacuum fault's description, Matter category and blocked modes into one typed definition, centralize activity-state classification, and prevent Matter publication failures from being misreported as lost robot connectivity.
+
 - Publish automatically after successful checks on every push or merge to `main`, using npm Trusted Publishing, automatic patch versions, queued releases, and idempotent retries.
 
 - Explicitly clear stale Matter operational-error details when the robot recovers; nested state merging previously retained the old communication/fault description alongside NoError.

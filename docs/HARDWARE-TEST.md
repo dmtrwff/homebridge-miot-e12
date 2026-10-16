@@ -20,9 +20,11 @@ Record the Homebridge, Node.js, and iOS versions, the MIoT model identifier, and
 12. **Extended run:** observe several hours of operation, response to changes, and any purifier restarts. Record delays or rejected property reads with SIID/PIID and response codes, excluding secrets.
 13. **Optional display:** first confirm no display light exists with the option disabled. Enable `exposeDisplay`, restart, and verify the linked Display light controls Off/Dim/On at 0%/50%/100%. Confirm the motor's power, mode, and Favorite level remain unchanged. Test dim → off → on, external display changes, and commands while purification is off. Apple Home may include this control in room/all-light commands; those must not start or stop purification. Disable the option, restart, and confirm only the display control disappears while purifier pairing remains.
 
-## Robot Vacuum E10
+## Robot Vacuum E10 and E12
 
-Also record the Apple home hub version, whether the plugin runs on the main bridge or a child bridge, and the Matter networking setup. Confirm the model is `xiaomi.vacuum.b112`.
+Also record the Apple home hub version, whether the plugin runs on the main bridge or a child bridge, and the Matter networking setup. Confirm the model is `xiaomi.vacuum.b112` (E10) or `xiaomi.vacuum.b112gl` (E12). E12 code `2103` has been observed during normal charging (`status 4`); record every other nonzero E12 fault code because no further hardware-specific exceptions have been established yet.
+
+The plugin writes an info-level `state …` line only when status, fault, cleaning mode, suction, or water changes. Preserve these lines for each step below. They contain no token and provide the raw values needed to verify a firmware transition; ordinary battery-only changes are intentionally not logged as transitions.
 
 1. **Setup and pairing:** enable Matter on the bridge running Xiaomi MIoT, import or manually add the E10, and restart. Pair the robot's own Matter QR code or PIN with Apple Home. Confirm that it appears as a robot vacuum and that an existing purifier still works through HomeKit without duplicate accessories.
 2. **Initial readings:** compare activity, cleaning mode, battery percentage, and charging state with Xiaomi Home. Before the first valid response, the plugin should report unavailable operation and unknown battery instead of invented healthy state.

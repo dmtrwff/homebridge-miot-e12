@@ -70,19 +70,18 @@ class VacuumEmulator implements MiotTransport {
   }
 }
 
-function fixture(did?: string) {
+function fixture(did?: string, model = 'xiaomi.vacuum.b112') {
   const emulator = new VacuumEmulator();
   let now = 0;
-  const device = new VacuumDevice(emulator, getVacuumProfile('xiaomi.vacuum.b112'), did, {
+  const device = new VacuumDevice(emulator, getVacuumProfile(model), did, {
     now: () => now, sleep: async milliseconds => { now += milliseconds; },
   });
   return { emulator, device };
 }
 
-test('E10 profile stays model-specific and follows the official vacuum and battery services', () => {
-  assert.deepEqual(SUPPORTED_VACUUM_MODELS, ['xiaomi.vacuum.b112']);
+test('E10 and E12 profiles stay model-specific and follow their official MIoT services', () => {
+  assert.deepEqual(SUPPORTED_VACUUM_MODELS, ['xiaomi.vacuum.b112', 'xiaomi.vacuum.b112gl']);
   assert.throws(() => getVacuumProfile('xiaomi.vacuum.b112bk'), /Unsupported/);
-  assert.throws(() => getVacuumProfile('xiaomi.vacuum.b112gl'), /Unsupported/);
   const profile = getVacuumProfile('xiaomi.vacuum.b112');
   assert.match(profile.source, /xiaomi-b112:1$/);
   assert.deepEqual(profile.actions, { start: { siid: 2, aiid: 1 }, stop: { siid: 2, aiid: 2 }, dock: { siid: 3, aiid: 1 } });
@@ -90,6 +89,24 @@ test('E10 profile stays model-specific and follows the official vacuum and batte
   assert.equal(profile.properties.filterLife.piid, 12);
   assert.equal(profile.properties.fault.max, 3000);
   assert.equal(profile.statuses[8], 'Updating firmware');
+  const e12 = getVacuumProfile('xiaomi.vacuum.b112gl');
+  assert.equal(e12.productName, 'Xiaomi Robot Vacuum E12');
+  assert.match(e12.source, /xiaomi-b112gl:1$/);
+  assert.deepEqual(e12.properties, profile.properties);
+  assert.deepEqual(e12.actions, profile.actions);
+  assert.equal(e12.nonErrorFaultCodes.includes(2105), false);
+  assert.equal(e12.faults[522]!.description, 'Mop pad is not installed. Attach it or select Vacuum.');
+  assert.equal(e12.faults[522]!.kind, 'mopCleaningPadMissing');
+  assert.equal(e12.faults[501]!.kind, 'wheelsJammed');
+  assert.equal(e12.faults[511]!.kind, 'failedToFindChargingDock');
+  assert.equal(e12.faults[525]!.kind, 'waterTankEmpty');
+  assert.deepEqual(e12.nonErrorFaultCodes, [0, 2103, 2104]);
+  assert.deepEqual(e12.faults[522]!.blockedModes, [1, 2]);
+  for (const [code, fault] of Object.entries(e12.faults)) {
+    assert.ok(fault.description.length > 0, `fault ${code} has a description`);
+    assert.equal(e12.nonErrorFaultCodes.includes(Number(code)), false, `fault ${code} is not also a healthy indication`);
+    assert.ok(fault.blockedModes?.every(mode => [0, 1, 2].includes(mode)) ?? true, `fault ${code} blocks valid task modes only`);
+  }
 });
 
 test('polling reads battery, current cleaning mode and separate consumables without fabricated state', async () => {
@@ -260,7 +277,7 @@ test('preset guard runs after queued Start and rejects without touching device s
   device.close();
 });
 
-test('preset guard rejects paused, returning, upgrading and faulted robots before writes', async () => {
+test('preset guard rejects active states but generic faults do not lock harmless settings', async () => {
   const { emulator, device } = fixture();
   for (const status of [2, 3, 5, 6, 7, 8]) {
     emulator.values.set('2/1', status);
@@ -268,8 +285,8 @@ test('preset guard rejects paused, returning, upgrading and faulted robots befor
   }
   emulator.values.set('2/1', 4);
   emulator.values.set('2/2', 123);
-  await assert.rejects(device.configureCleaning({ mode: 2, water: 1 }), VacuumStateError);
-  assert.equal(emulator.writes().length, 0);
+  assert.equal((await device.configureCleaning({ mode: 2, water: 1 })).mode, 2);
+  assert.equal(emulator.writes().length, 2);
   emulator.values.set('2/2', 0);
   assert.equal((await device.configureCleaning({ mode: 2, water: 1 })).mode, 2);
   device.close();
@@ -302,7 +319,7 @@ test('reasserting matching cleaning settings preserves an externally paused or r
   device.close();
 });
 
-test('E10 reported full-charge indication permits real preset changes without hiding unknown faults', async () => {
+test('E10 fault readings remain visible while harmless preset changes stay available', async () => {
   const { emulator, device } = fixture();
   emulator.values.set('3/1', 100);
   emulator.values.set('2/2', 2105);
@@ -312,11 +329,28 @@ test('E10 reported full-charge indication permits real preset changes without hi
   assert.equal(state.suction, 4);
   for (const fault of [123, 2103, 2531]) {
     emulator.values.set('2/2', fault);
-    await assert.rejects(device.configureCleaning({ mode: 2 }), error => {
-      assert.ok(error instanceof VacuumStateError);
-      assert.match(error.message, new RegExp(String(fault)));
-      return true;
-    });
+    const changed = await device.configureCleaning({ mode: fault === 123 ? 2 : 0 });
+    assert.equal(changed.fault, fault);
   }
+  device.close();
+});
+
+test('E12 mop fault blocks wet modes but permits recovery to Vacuum with a useful message', async () => {
+  const { emulator, device } = fixture(undefined, 'xiaomi.vacuum.b112gl');
+  emulator.values.set('2/1', 4);
+  emulator.values.set('2/2', 522);
+  emulator.values.set('2/4', 1);
+  await assert.rejects(device.configureCleaning({ mode: 2, water: 1 }), error => {
+    assert.ok(error instanceof VacuumStateError);
+    assert.match(error.message, /Mop pad is not installed/);
+    return true;
+  });
+  const recovered = await device.configureCleaning({ mode: 0, suction: 4 });
+  assert.equal(recovered.mode, 0);
+  assert.equal(recovered.suction, 4);
+  assert.equal(recovered.fault, 522, 'Keep the raw fault until firmware clears it');
+  assert.deepEqual(emulator.writes().map(({ siid, piid, value }) => ({ siid, piid, value })), [
+    { siid: 2, piid: 4, value: 0 }, { siid: 7, piid: 5, value: 4 },
+  ]);
   device.close();
 });

@@ -3,18 +3,36 @@ import type { API, Logger, MatterAccessory, MatterAPI } from 'homebridge';
 import { deviceIdentity, type DeviceConfig } from '../config.js';
 import { VacuumCommandError, VacuumDevice, VacuumStateError } from '../devices/vacuum.js';
 import { cleaningModeForState, findCleaningMode, VACUUM_CLEAN_MODES } from './vacuum-modes.js';
-import { getVacuumProfile, hasVacuumFault, type VacuumState } from '../devices/vacuum-profile.js';
+import { getVacuumProfile, hasVacuumFault, vacuumFaultDescription, vacuumFaultKind, type VacuumFaultKind, type VacuumState } from '../devices/vacuum-profile.js';
 import type { MiotTransport } from '../miio/transport.js';
 
 // Homebridge 2.4 exposes RvcOperationalState enums, but not these other
 // standard clusters' enums. Values are defined by the Matter specification.
 const RUN_TAG = { Idle: 0x4000, Cleaning: 0x4001 } as const;
-const CLEAN_TAG = { Vacuum: 0x4001, Mop: 0x4002 } as const;
 const POWER = {
   Status: { Unspecified: 0, Active: 1, Standby: 2 },
   Level: { Ok: 0, Warning: 1, Critical: 2 },
   Charging: { Unknown: 0, IsCharging: 1, IsNotCharging: 3 },
 } as const;
+const CLEANING_STATUSES = new Set([5, 6, 7]);
+const ACTIVE_RUN_MODE_STATUSES = new Set([2, ...CLEANING_STATUSES]);
+const MATTER_ERROR_NAMES: Readonly<Record<VacuumFaultKind, string>> = {
+  failedToFindChargingDock: 'FailedToFindChargingDock',
+  stuck: 'Stuck',
+  dustBinMissing: 'DustBinMissing',
+  dustBinFull: 'DustBinFull',
+  waterTankEmpty: 'WaterTankEmpty',
+  waterTankMissing: 'WaterTankMissing',
+  waterTankLidOpen: 'WaterTankLidOpen',
+  mopCleaningPadMissing: 'MopCleaningPadMissing',
+  lowBattery: 'LowBattery',
+  cannotReachTargetArea: 'CannotReachTargetArea',
+  dirtyWaterTankFull: 'DirtyWaterTankFull',
+  dirtyWaterTankMissing: 'DirtyWaterTankMissing',
+  wheelsJammed: 'WheelsJammed',
+  brushJammed: 'BrushJammed',
+  navigationSensorObscured: 'NavigationSensorObscured',
+};
 
 /** A real Matter robotic vacuum. HAP has no robotic vacuum service. */
 export class VacuumAccessory {
@@ -28,6 +46,7 @@ export class VacuumAccessory {
   private closed = false;
   private lastProblem?: string;
   private lastFault?: number;
+  private lastObservation?: string;
   private preferredCleanMode?: number;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly exhausted = new Set<string>();
@@ -65,8 +84,7 @@ export class VacuumAccessory {
         rvcCleanMode: {
           supportedModes: VACUUM_CLEAN_MODES.map(mode => ({
             mode: mode.mode, label: mode.label,
-            modeTags: mode.settings.mode === 1 ? [{ value: CLEAN_TAG.Vacuum }, { value: CLEAN_TAG.Mop }]
-              : [{ value: mode.settings.mode === 2 ? CLEAN_TAG.Mop : CLEAN_TAG.Vacuum }],
+            modeTags: mode.modeTags.map(value => ({ value })),
           })),
           currentMode: 0,
         },
@@ -100,7 +118,7 @@ export class VacuumAccessory {
         rvcRunMode: {
           changeToMode: async request => {
             if (!request || ![0, 1].includes(request.newMode)) {
-              throw new this.matter.status.ConstraintError('Unsupported vacuum run mode.');
+              throw this.constraintError('Unsupported vacuum run mode.');
             }
             // E10's stop-sweeping action pauses in place. Idle must end cleaning,
             // so Stop/Idle returns to the dock; the native Pause command is separate.
@@ -116,14 +134,23 @@ export class VacuumAccessory {
         rvcCleanMode: {
           changeToMode: async request => {
             const selected = request && findCleaningMode(request.newMode);
-            if (!selected) throw new this.matter.status.ConstraintError('Unsupported vacuum cleaning mode.');
+            if (!selected) throw this.constraintError('Unsupported vacuum cleaning mode.');
             // The device transaction rechecks idle state before writing the
             // preset, preserving suction/water settings not named by the preset.
             await this.command(() => this.device.configureCleaning(selected.settings), selected.mode);
           },
         },
         rvcOperationalState: {
-          pause: async () => { await this.command(() => this.device.pause()); },
+          pause: async () => {
+            await this.command(async () => {
+              const state = await this.device.refresh();
+              if (!CLEANING_STATUSES.has(state.status)) {
+                const activity = this.device.profile.statuses[state.status] ?? `status ${state.status}`;
+                throw new VacuumStateError(`Cannot pause while ${activity.toLowerCase()}.`, state);
+              }
+              return this.device.pause();
+            });
+          },
           resume: async () => { await this.command(() => this.device.resume()); },
           goHome: async () => { await this.command(() => this.device.dock()); },
         },
@@ -207,40 +234,63 @@ export class VacuumAccessory {
 
   private command(action: () => Promise<VacuumState>, cleanMode?: number, runMode?: number): Promise<void> {
     return this.enqueue(async () => {
-      if (this.closed) throw new this.matter.status.Failure('Device connection is closed.');
+      if (this.closed) throw this.failure('Device connection is closed.');
+      let state: VacuumState;
       try {
-        const state = await action();
-        // The device layer confirms asynchronous changes without replaying writes.
-        if (this.closed) throw new this.matter.status.Failure('Device connection is closed.');
-        if (cleanMode !== undefined) this.preferredCleanMode = cleanMode;
-        await this.publish(state);
-        if (runMode !== undefined && this.runMode(state) !== runMode) {
-          throw new this.matter.status.Failure('The robot has not confirmed the requested run mode.');
-        }
-        if (cleanMode !== undefined && cleaningModeForState(state, cleanMode) !== cleanMode) {
-          throw new this.matter.status.Failure('The robot has not confirmed all settings of the cleaning preset.');
-        }
+        state = await action();
       } catch (error) {
         if (error instanceof VacuumCommandError) {
           if (!this.closed) {
             await this.publish(error.state);
             this.log.warn(`${this.config.name}: command not completed (${this.safeMessage(error)}). Device is still reachable.`);
           }
-          throw new this.matter.status.Failure(this.safeMessage(error));
+          throw this.failure(this.safeMessage(error));
         }
         if (error instanceof VacuumStateError) {
           await this.publish(error.state);
-          throw new this.matter.status.InvalidInState(error.message);
+          throw this.failure(error.message);
         }
-        if (this.matter.status.isMatterProtocolError(error)) throw error;
+        if (this.isMatterProtocolError(error)) throw error;
         if (!this.closed) await this.reportUnavailable(error);
-        throw new this.matter.status.Failure('The robot did not confirm the requested operation.');
+        throw this.failure('The robot did not confirm the requested operation.');
+      }
+      // Keep Matter publication and protocol validation outside the device-I/O
+      // catch: an endpoint update failure is not evidence that the robot is offline.
+      if (this.closed) throw this.failure('Device connection is closed.');
+      if (cleanMode !== undefined) this.preferredCleanMode = cleanMode;
+      try {
+        await this.publish(state);
+      } catch (error) {
+        this.reportUpdateError(error);
+        throw this.failure('Homebridge could not publish the confirmed robot state.');
+      }
+      if (runMode !== undefined && this.runMode(state) !== runMode) {
+        throw this.failure('The robot has not confirmed the requested run mode.');
+      }
+      if (cleanMode !== undefined && cleaningModeForState(state, cleanMode) !== cleanMode) {
+        throw this.failure('The robot has not confirmed all settings of the cleaning preset.');
       }
     });
   }
 
+  /** Older Homebridge 2.x runtimes expose only part of the typed status API. */
+  private failure(message: string): Error {
+    const status = this.matter.status as unknown as { Failure?: new (message?: string) => Error } | undefined;
+    return typeof status?.Failure === 'function' ? new status.Failure(message) : new Error(message);
+  }
+
+  private constraintError(message: string): Error {
+    const status = this.matter.status as unknown as { ConstraintError?: new (message?: string) => Error } | undefined;
+    return typeof status?.ConstraintError === 'function' ? new status.ConstraintError(message) : new Error(message);
+  }
+
+  private isMatterProtocolError(error: unknown): boolean {
+    const status = this.matter.status as unknown as { isMatterProtocolError?: (value: unknown) => boolean } | undefined;
+    return typeof status?.isMatterProtocolError === 'function' && status.isMatterProtocolError(error);
+  }
+
   private runMode(state: VacuumState): number {
-    return [2, 5, 6, 7].includes(state.status) ? 1 : 0;
+    return ACTIVE_RUN_MODE_STATUSES.has(state.status) ? 1 : 0;
   }
 
   private unavailableState(): Record<string, unknown> {
@@ -249,7 +299,7 @@ export class VacuumAccessory {
       operationalState: Op.OperationalState.Error,
       operationalError: {
         errorStateId: Op.ErrorState.UnableToCompleteOperation,
-        errorStateDetails: 'Communication unavailable. Check the robot LAN connection.',
+        errorStateDetails: this.matterDetails('Communication unavailable. Check the robot LAN connection.'),
       },
     };
   }
@@ -265,7 +315,7 @@ export class VacuumAccessory {
 
   private async publish(state: VacuumState): Promise<void> {
     const { RvcOperationalState: Op } = this.matter.types;
-    const running = [5, 6, 7].includes(state.status);
+    const running = CLEANING_STATUSES.has(state.status);
     let operationalState = Op.OperationalState.Stopped;
     if (running) operationalState = Op.OperationalState.Running;
     else if (state.status === 2) operationalState = Op.OperationalState.Paused;
@@ -281,14 +331,14 @@ export class VacuumAccessory {
     if (faulted) {
       operationalState = Op.OperationalState.Error;
       operationalError = {
-        errorStateId: Op.ErrorState.UnableToCompleteOperation,
-        errorStateDetails: `Xiaomi error ${state.fault}. See Xiaomi Home for recovery instructions.`,
+        errorStateId: this.matterErrorForFault(vacuumFaultKind(this.device.profile, state.fault)),
+        errorStateDetails: this.matterDetails(vacuumFaultDescription(this.device.profile, state.fault)),
       };
     } else if (state.status === 8) {
       operationalState = Op.OperationalState.Error;
       operationalError = {
         errorStateId: Op.ErrorState.CommandInvalidInState,
-        errorStateDetails: 'Firmware update in progress. Wait for the robot to finish.',
+        errorStateDetails: this.matterDetails('Firmware update in progress. Wait for the robot to finish.'),
       };
     }
     await this.update('rvcRunMode', { currentMode: this.runMode(state) });
@@ -304,13 +354,14 @@ export class VacuumAccessory {
         : state.battery <= 20 ? POWER.Level.Warning : POWER.Level.Ok,
       batChargeState: state.status === 4 ? POWER.Charging.IsCharging : POWER.Charging.IsNotCharging,
     });
+    this.logStateTransition(state);
     if (this.lastProblem !== undefined) {
       this.log.info(`${this.config.name}: device communication restored.`);
       this.lastProblem = undefined;
     }
     if (state.fault !== this.lastFault) {
       if (faulted) {
-        this.log.warn(`${this.config.name}: Xiaomi device error ${state.fault} (status ${state.status}, battery ${state.battery}%). Check Xiaomi Home for details.`);
+        this.log.warn(`${this.config.name}: ${vacuumFaultDescription(this.device.profile, state.fault)} (status ${state.status}, battery ${state.battery}%).`);
       } else if (this.lastFault !== undefined && hasVacuumFault(this.device.profile, this.lastFault)) {
         this.log.info(`${this.config.name}: device fault cleared.`);
       }
@@ -324,6 +375,27 @@ export class VacuumAccessory {
         this.exhausted.add(key);
       } else if (state[key] > 0) this.exhausted.delete(key);
     }
+  }
+
+  private matterErrorForFault(kind: VacuumFaultKind | undefined): number {
+    const ErrorState = this.matter.types.RvcOperationalState.ErrorState;
+    if (!kind) return ErrorState.UnableToCompleteOperation;
+    const value = ErrorState[MATTER_ERROR_NAMES[kind] as keyof typeof ErrorState];
+    return typeof value === 'number' ? value : ErrorState.UnableToCompleteOperation;
+  }
+
+  /**
+   * Keep field diagnostics useful without logging every battery-only poll.
+   * Raw MIoT values are intentional: Xiaomi does not publish a complete E12
+   * fault-code dictionary, so hardware observations are needed before a code
+   * can safely be translated or classified as harmless.
+   */
+  private logStateTransition(state: VacuumState): void {
+    const observation = [state.status, state.fault, state.mode, state.suction, state.water].join('/');
+    if (observation === this.lastObservation) return;
+    const activity = this.device.profile.statuses[state.status] ?? 'Unknown';
+    this.log.info(`${this.config.name}: state ${activity} (status=${state.status}, fault=${state.fault}, mode=${state.mode}, suction=${state.suction}, water=${state.water}, battery=${state.battery}%).`);
+    this.lastObservation = observation;
   }
 
   private async update(cluster: string, attributes: Record<string, unknown>): Promise<void> {
@@ -350,5 +422,10 @@ export class VacuumAccessory {
   private safeMessage(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Device communication failed';
     return message.split(this.config.token).join('[redacted]').replace(/[\r\n]/g, ' ').slice(0, 200);
+  }
+
+  /** Matter OperationalError.errorStateDetails is constrained to 64 characters. */
+  private matterDetails(message: string): string {
+    return [...message].slice(0, 64).join('');
   }
 }
