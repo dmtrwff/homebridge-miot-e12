@@ -1,7 +1,7 @@
 {
   "name": "@twinforce/homebridge-miot",
   "displayName": "Xiaomi MIoT",
-  "version": "0.2.2-e12.15",
+  "version": "0.2.2-e12.16",
   "description": "Native Apple Home integration for Xiaomi MIoT devices: Air Purifier 4 Compact and Robot Vacuum E10/E12.",
   "type": "module",
   "main": "dist/index.js",
@@ -23,12 +23,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TwinForceIT/homebridge-miot.git"
+    "url": "https://github.com/dmtrwff/homebridge-miot-e12.git"
   },
   "bugs": {
-    "url": "https://github.com/TwinForceIT/homebridge-miot/issues"
+    "url": "https://github.com/dmtrwff/homebridge-miot-e12/issues"
   },
-  "homepage": "https://github.com/TwinForceIT/homebridge-miot#readme",
+  "homepage": "https://github.com/dmtrwff/homebridge-miot-e12#readme",
   "files": [
     "dist",
     "homebridge-ui",
