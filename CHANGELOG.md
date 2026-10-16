@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rework the README for the independent E12 fork, document source-archive installation and hardware validation, correct the native mode count, point project metadata to the fork, and run CI on its `main` branch without enabling upstream npm publishing.
 - Add Xiaomi Robot Vacuum E12 (`xiaomi.vacuum.b112gl`) as a separate native Matter vacuum profile, verified against Xiaomi's published MIoT specification and awaiting physical-device acceptance testing.
 - Treat E12 code `2103` as its normal charging indication after observing it with status `4` at 22% battery; do not extend the E10-only `2105` exception without an E12 hardware observation.
 - Avoid a command-handler `TypeError` on Homebridge Matter API builds whose runtime status object omits `InvalidInState`; rejected state-dependent commands now use the universally available Matter failure response while retaining the native RVC operational error.

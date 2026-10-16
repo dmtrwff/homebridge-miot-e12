@@ -1,6 +1,8 @@
-# @twinforce/homebridge-miot
+# homebridge-miot-e12
 
-A modular Homebridge plugin for Xiaomi MIoT devices with native controls in Apple Home.
+A community fork of [`@twinforce/homebridge-miot`](https://github.com/TwinForceIT/homebridge-miot) focused on native Apple Home Matter support for Xiaomi Robot Vacuum E10 and E12. Runtime control is local through miIO/MIoT; Xiaomi Cloud is used only during setup.
+
+> This fork retains the package identifier `@twinforce/homebridge-miot` for Homebridge compatibility. It is maintained independently at [`dmtrwff/homebridge-miot-e12`](https://github.com/dmtrwff/homebridge-miot-e12) and is not an official TwinForceIT, Xiaomi, Apple, or Homebridge release.
 
 | Device | MIoT model | Apple Home integration |
 | --- | --- | --- |
@@ -8,9 +10,9 @@ A modular Homebridge plugin for Xiaomi MIoT devices with native controls in Appl
 | Xiaomi Robot Vacuum E10 | `xiaomi.vacuum.b112` | Matter Robotic Vacuum Cleaner |
 | Xiaomi Robot Vacuum E12 | `xiaomi.vacuum.b112gl` | Matter Robotic Vacuum Cleaner |
 
-The purifier uses standard HomeKit services. The E10 and E12 use Homebridge's native Matter robot vacuum support, so Apple Home recognizes them as robot vacuums. These devices are not represented by custom switches. Control is local through miIO/MIoT; Xiaomi Cloud is used only during setup.
+The purifier uses standard HomeKit services. The E10 and E12 use Homebridge's native Matter robot vacuum support, so Apple Home recognizes them as robot vacuums. These devices are not represented by custom switches.
 
-**Validation status:** covered by automated tests, checked against published MIoT specifications, and tested against the public QR login initiation endpoint. E10 field feedback confirms Matter pairing, movement, pause, and cleaning-mode changes, but the revised command confirmation handling still needs physical validation. The complete hardware acceptance checklist and a complete Xiaomi account login have not been verified. This project is not an Apple-certified accessory or an official Xiaomi integration.
+**Validation status:** the E12 implementation has been exercised on a physical `xiaomi.vacuum.b112gl`, including Matter pairing, start, pause, resume, docking, cleaning-mode changes, suction, water level, Locate, charging state, and missing-mop recovery. Automated tests cover protocol validation, delayed firmware responses, faults, polling, recovery, and the real Homebridge Matter endpoint. E10 support originates upstream and retains its existing field coverage. Apple Home presentation can vary by OS and home-hub version.
 
 ## Air Purifier 4 Compact in Apple Home
 
@@ -64,9 +66,9 @@ Apple Home's native robot vacuum support uses **Matter**. The E10 and E12 are pu
 
 Xiaomi may acknowledge a command before its properties reflect the change. The plugin accepts normal and pending acknowledgements, then polls the affected property with a **three-second settling budget** shared by the whole preset. It never repeats the action or write. Individual network requests and the final full state read can add time. A rejected or unconfirmed command still fails, but a successful fresh state read keeps the robot reachable and preserves its actual activity and battery. A failed state read still produces a communication error.
 
-The supported vacuum models are `xiaomi.vacuum.b112` (E10) and `xiaomi.vacuum.b112gl` (E12). Similar product names such as E10C or variants with another MIoT identifier must not be assumed compatible. The published specifications supply numeric fault codes without a complete description for each value. The plugin preserves raw codes and treats unrecognized nonzero codes as native faults. Hardware observations establish `2105` as E10's fully charged indication and `2103` as E12's normal charging indication, consistent with the [status values documented by python-miio for Viomi](https://github.com/rytilahti/python-miio/issues/789). Those codes do not create operational errors on their respective models; the exceptions are not transferred between models without physical evidence. Activity and battery still come from their own properties, not from this code. Apple Home decides how native modes, errors, and battery details are displayed. A communication failure is exposed as a native operational error; the Homebridge 2.4 API does not let this plugin guarantee an Apple Home “No Response” badge for the standalone robot.
+The supported vacuum models are `xiaomi.vacuum.b112` (E10) and `xiaomi.vacuum.b112gl` (E12). Similar product names such as E10C or variants with another MIoT identifier must not be assumed compatible. The published specifications supply numeric fault codes without a complete description for each value. The plugin preserves raw codes and treats unrecognized nonzero codes as native faults. Hardware observations establish `2105` as E10's fully charged indication and `2103` as E12's normal charging indication; the B112-family table also identifies E12 code `2104` as fully charged. These indications do not create operational errors on their respective models. Activity and battery still come from their own properties, not from a fault-field indication. Apple Home decides how native modes, errors, and battery details are displayed. A communication failure is exposed as a native operational error; the Homebridge 2.4 API does not let this plugin guarantee an Apple Home “No Response” badge for the standalone robot.
 
-The native cleaning-mode menu includes 17 choices:
+The native cleaning-mode menu includes 14 choices:
 
 | Choices | Settings changed |
 | --- | --- |
@@ -114,65 +116,39 @@ Matter must be enabled on the actual main or child bridge that runs this plugin.
 - A fixed IPv4 address or DHCP reservation. Container and VLAN networking must allow traffic to the device.
 - Internet access during login and import. After a device is saved, runtime control does not depend on Xiaomi Cloud.
 
-## Installation
+## Installation of this fork
 
-The [@twinforce/homebridge-miot package](https://www.npmjs.com/package/@twinforce/homebridge-miot) is public on npmjs.org. Installation requires no npm account or token. The source repository also remains public on GitHub.
+This fork is not published under the original author's npm namespace. Installing `@twinforce/homebridge-miot` from npm may therefore install the upstream release without the E12 changes documented here. Build an installable archive from this repository instead.
 
-### Official Homebridge Docker image
-
-For the `homebridge/homebridge` image, open **Terminal** in the Homebridge UI and run:
+On a computer with Git, Node.js and npm:
 
 ```sh
-hb-service add @twinforce/homebridge-miot
-```
-
-Restart Homebridge from the UI, then open the **Xiaomi MIoT** plugin settings. The same installation can be performed from the Docker host; replace `homebridge` if your container has a different name:
-
-```sh
-docker exec -it homebridge hb-service add @twinforce/homebridge-miot
-docker restart homebridge
-```
-
-Use the image's plugin manager so the plugin is installed in the directory Homebridge actually loads. Keep `/homebridge` on a persistent volume to retain plugins and configuration when recreating the container. The official Linux deployment uses host networking for discovery. See the [Homebridge Docker configuration](https://github.com/homebridge/docker-homebridge#configuration).
-
-### Other Homebridge installations
-
-Install the package through Homebridge UI when available. For a setup that loads plugins from the global npm directory, use the same Node.js environment as Homebridge:
-
-```sh
-npm install -g @twinforce/homebridge-miot
-```
-
-Restart Homebridge and open **Xiaomi MIoT** settings. If your installation manages plugins in a dedicated directory, use its plugin manager instead of installing into an unrelated global directory.
-
-### Migrating from the earlier local package
-
-If the unscoped `homebridge-miot` package is already installed, replace it with the `@twinforce` package. Stop Homebridge first. For a global npm installation:
-
-```sh
-npm uninstall -g homebridge-miot
-npm install -g @twinforce/homebridge-miot
-```
-
-On a managed installation, remove the old plugin through its plugin manager and install the scoped package using the appropriate instructions above. Preserve configuration and accessory cache, then restart Homebridge.
-
-Keep the `platform: "XiaomiMiot"` block and device identifiers. Homebridge 2 recognizes the unchanged platform name, and the plugin preserves existing accessory UUIDs. Do not load both packages together. Also update any `plugins`, `disabledPlugins`, or fully qualified platform names that refer to the old package name.
-
-### Installing a local build
-
-```sh
+git clone https://github.com/dmtrwff/homebridge-miot-e12.git
+cd homebridge-miot-e12
 npm ci
 npm run check
 npm pack
 ```
 
-Install the generated archive using the method appropriate for your Homebridge setup. For a global npm installation:
+Copy the generated `twinforce-homebridge-miot-0.2.2-e12.16.tgz` to the Homebridge host. For the macOS installation used during E12 hardware testing:
 
 ```sh
-npm install -g /absolute/path/to/twinforce-homebridge-miot-VERSION.tgz
+sudo /usr/local/bin/npm install -g --force ./twinforce-homebridge-miot-0.2.2-e12.16.tgz
+sudo hb-service restart
 ```
 
-Replace `VERSION` with the generated filename and copy the archive to the Homebridge host if needed. In Docker, use the container's Homebridge environment and persistent plugin directory. Release instructions are in [docs/PUBLISHING.md](docs/PUBLISHING.md).
+Use the npm executable belonging to the same Node.js installation as Homebridge. Other managed installations and Docker deployments may use a different plugin directory; install the archive through that environment rather than an unrelated global npm directory. Preserve the existing `platform: "XiaomiMiot"` configuration, accessory cache, Matter storage, and `xiaomi-miot-matter-identities.json`. Do not load this fork and the upstream package simultaneously because both register the same Homebridge platform.
+
+To update a source checkout later:
+
+```sh
+git pull --ff-only
+npm ci
+npm run check
+npm pack
+```
+
+Install the newly generated archive and restart Homebridge. Re-pairing the vacuum is not required when its configuration and Matter identity storage are preserved.
 
 ## Setup through Xiaomi Cloud
 
@@ -207,24 +183,24 @@ Use the manual configuration option in the plugin settings, or add a block to th
     },
     {
       "name": "Robot vacuum",
-      "model": "xiaomi.vacuum.b112",
+      "model": "xiaomi.vacuum.b112gl",
       "host": "192.168.1.51",
       "token": "abcdef0123456789abcdef0123456789",
-      "id": "robot-vacuum-e10",
+      "id": "robot-vacuum-e12",
       "enabled": true
     }
   ]
 }
 ```
 
-Both tokens above are examples. Supply each device's own 32-character LAN token, which is different from your Xiaomi account password. Use the device's actual model identifier. The E10 entry also requires Matter to be enabled and paired as described above.
+Both tokens above are examples. Supply each device's own 32-character LAN token, which is different from your Xiaomi account password. Use the device's actual model identifier. The E12 entry also requires Matter to be enabled and paired as described above.
 
 - `pollInterval`: 10–300 seconds, default 15. Each polling cycle starts after the previous cycle completes.
 - `id`: an optional stable identifier of your choice. Set it when first configuring a device manually and keep it when changing the IP address.
 - `did`: Xiaomi's device identifier, populated during import. Without `id` or `did`, accessory identity depends on the IP address.
 - `enabled: false`: stops publishing the device after a restart while retaining its configuration entry. A HomeKit purifier is removed from its bridge; a separately paired Matter robot may remain as an unavailable tile in Apple Home.
 
-Importing an existing manually configured device at the same address preserves its accessory identity. A device that stops responding is not removed. Deleting its entry or disabling it stops publication after a restart and may affect automations. To permanently remove a separately paired E10, also remove its accessory in Apple Home. The plugin retains its identity mapping to support re-enabling the same device; preserve that file and Homebridge's Matter storage in backups.
+Importing an existing manually configured device at the same address preserves its accessory identity. A device that stops responding is not removed. Deleting its entry or disabling it stops publication after a restart and may affect automations. To permanently remove a separately paired E10 or E12, also remove its accessory in Apple Home. The plugin retains its identity mapping to support re-enabling the same device; preserve that file and Homebridge's Matter storage in backups.
 
 ## Architecture and development
 
@@ -233,7 +209,7 @@ Importing an existing manually configured device at the same address preserves i
 - `src/devices/registry.ts`: registry of device families and their HomeKit or Matter adapters.
 - `src/devices/profiles.ts`: CPA4 protocol definitions, including property addresses, ranges, and fault codes.
 - `src/devices/purifier.ts`: purifier logic, command queue, polling, and write confirmation.
-- `src/devices/vacuum-profile.ts` and `src/devices/vacuum.ts`: E10 MIoT properties, actions, and state validation.
+- `src/devices/vacuum-profile.ts` and `src/devices/vacuum.ts`: E10/E12 MIoT properties, fault catalog, actions, and state validation.
 - `src/matter/vacuum-accessory.ts`: the native Matter robot vacuum adapter.
 - `src/matter/vacuum-modes.ts`: native cleaning presets and their mapping to actual device settings.
 - `src/matter/identity-store.ts`: persistent Matter identity tracking and accessory reconciliation.
@@ -257,7 +233,7 @@ Tests cover real HAP classes, a simulated UDP device, cryptographic vectors, fai
 
 ## Releases
 
-Every push or merged pull request to `main` runs the supported Node.js test matrix and automatically publishes the next stable patch to npm. Larger versions can be requested explicitly. Releases use npm Trusted Publishing without a stored npm token; see [the one-time setup and release guide](docs/PUBLISHING.md).
+GitHub Actions runs the supported Node.js test matrix for this fork. Automatic npm publishing is intentionally restricted to the original `TwinForceIT/homebridge-miot` repository, so merges in this fork cannot publish into the original author's namespace. Until this fork adopts its own package name and release process, build the `.tgz` archive locally using the installation instructions above.
 
 ## Technical references
 
