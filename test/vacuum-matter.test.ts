@@ -170,6 +170,13 @@ test('state diagnostics report transitions once and preserve raw E12 charging va
     assert.equal(f.logs.filter(line => line.includes('state Charging')).length, 1);
     assert.match(f.logs.find(line => line.includes('state Charging'))!, /status=4, fault=2103, mode=0, suction=1, water=1, battery=22%/);
 
+    f.emulator.values.set('2/2', 2105);
+    f.emulator.values.set('3/1', 100);
+    await f.controller.refresh();
+    assert.equal(f.state('rvcOperationalState').operationalState, 65);
+    assert.deepEqual(f.state('rvcOperationalState').operationalError, { errorStateId: 0, errorStateDetails: '' });
+    assert.match(f.logs.at(-1)!, /state Charging \(status=4, fault=2105, mode=0, suction=1, water=1, battery=100%/);
+
     f.emulator.values.set('2/1', 5);
     f.emulator.values.set('2/2', 0);
     await f.controller.refresh();
@@ -234,7 +241,7 @@ test('E12 B112-family faults map to native Matter RVC errors', async () => {
       assert.equal(error.errorStateId, matterError, `MIoT fault ${fault}`);
       assert.ok([...String(error.errorStateDetails)].length <= 64, `MIoT fault ${fault} details`);
     }
-    for (const indication of [2103, 2104]) {
+    for (const indication of [2103, 2104, 2105]) {
       f.emulator.values.set('2/2', indication);
       await f.controller.refresh();
       const error = f.state('rvcOperationalState').operationalError as { errorStateId: unknown };

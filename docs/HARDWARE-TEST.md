@@ -22,7 +22,7 @@ Record the Homebridge, Node.js, and iOS versions, the MIoT model identifier, and
 
 ## Robot Vacuum E10 and E12
 
-Also record the Apple home hub version, whether the plugin runs on the main bridge or a child bridge, and the Matter networking setup. Confirm the model is `xiaomi.vacuum.b112` (E10) or `xiaomi.vacuum.b112gl` (E12). E12 code `2103` has been observed during normal charging (`status 4`); record every other nonzero E12 fault code because no further hardware-specific exceptions have been established yet.
+Also record the Apple home hub version, whether the plugin runs on the main bridge or a child bridge, and the Matter networking setup. Confirm the model is `xiaomi.vacuum.b112` (E10) or `xiaomi.vacuum.b112gl` (E12). E12 code `2103` has been observed during normal charging (`status 4`), and `2105` at 100% battery with the same charging status; record every other nonzero E12 fault code because no further hardware-specific exceptions have been established yet.
 
 The plugin writes an info-level `state …` line only when status, fault, cleaning mode, suction, or water changes. Preserve these lines for each step below. They contain no token and provide the raw values needed to verify a firmware transition; ordinary battery-only changes are intentionally not logged as transitions.
 

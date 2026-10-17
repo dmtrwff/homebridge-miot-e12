@@ -94,13 +94,13 @@ test('E10 and E12 profiles stay model-specific and follow their official MIoT se
   assert.match(e12.source, /xiaomi-b112gl:1$/);
   assert.deepEqual(e12.properties, profile.properties);
   assert.deepEqual(e12.actions, profile.actions);
-  assert.equal(e12.nonErrorFaultCodes.includes(2105), false);
+  assert.equal(e12.nonErrorFaultCodes.includes(2105), true);
   assert.equal(e12.faults[522]!.description, 'Mop pad is not installed. Attach it or select Vacuum.');
   assert.equal(e12.faults[522]!.kind, 'mopCleaningPadMissing');
   assert.equal(e12.faults[501]!.kind, 'wheelsJammed');
   assert.equal(e12.faults[511]!.kind, 'failedToFindChargingDock');
   assert.equal(e12.faults[525]!.kind, 'waterTankEmpty');
-  assert.deepEqual(e12.nonErrorFaultCodes, [0, 2103, 2104]);
+  assert.deepEqual(e12.nonErrorFaultCodes, [0, 2103, 2104, 2105]);
   assert.deepEqual(e12.faults[522]!.blockedModes, [1, 2]);
   for (const [code, fault] of Object.entries(e12.faults)) {
     assert.ok(fault.description.length > 0, `fault ${code} has a description`);

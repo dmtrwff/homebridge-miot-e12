@@ -5,7 +5,7 @@
 - Publish the fork independently as `homebridge-miot-e12` and document npm installation without requiring access to the upstream `@twinforce` scope.
 - Rework the README for the independent E12 fork, document source-archive installation and hardware validation, correct the native mode count, point project metadata to the fork, and run CI on its `main` branch without enabling upstream npm publishing.
 - Add Xiaomi Robot Vacuum E12 (`xiaomi.vacuum.b112gl`) as a separate native Matter vacuum profile, verified against Xiaomi's published MIoT specification and awaiting physical-device acceptance testing.
-- Treat E12 code `2103` as its normal charging indication after observing it with status `4` at 22% battery; do not extend the E10-only `2105` exception without an E12 hardware observation.
+- Treat E12 codes `2103` and `2105` as charging indications after observing them with status `4` at 22% and 100% battery respectively; preserve their raw values without publishing a false operational error.
 - Avoid a command-handler `TypeError` on Homebridge Matter API builds whose runtime status object omits `InvalidInState`; rejected state-dependent commands now use the universally available Matter failure response while retaining the native RVC operational error.
 - Tag E12 suction presets with standard Matter Quiet, Min, DeepClean, and Max mode tags and use friendly labels so Apple Home can distinguish power levels instead of collapsing identical Vacuum-tagged modes.
 - Match the Xiaomi E12 app's exact level names: Silent, Standard, Medium, and Turbo for suction; Low, Medium, and High for water flow.

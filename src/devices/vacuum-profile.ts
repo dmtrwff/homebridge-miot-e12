@@ -102,10 +102,11 @@ const E12_PROFILE: VacuumProfile = {
   ...E10_PROFILE,
   productName: 'Xiaomi Robot Vacuum E12',
   source: 'https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-b112gl:1',
-  // E12 field report (2026-10-16): 2103 while status 4 reported normal
-  // charging at 22% battery. The shared B112-family table identifies 2104
-  // as fully charged; both are device indications rather than failures.
-  nonErrorFaultCodes: [0, 2103, 2104],
+  // E12 field reports: 2103 while status 4 reported normal charging at 22%
+  // battery (2026-10-16), and 2105 while status 4 reported fully charged at
+  // 100% (2026-10-17). The shared B112-family table also identifies 2104 as
+  // fully charged. These are device indications rather than failures.
+  nonErrorFaultCodes: [0, 2103, 2104, 2105],
   // E12 field report (2026-10-16): stop-sweeping invoked by Matter Pause
   // settled at status 1 (Idle). Accept the spec-declared Paused state too,
   // while publishing whichever operational state the firmware actually reads.
