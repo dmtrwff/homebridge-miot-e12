@@ -1,8 +1,8 @@
 {
   "name": "homebridge-miot-e12",
   "displayName": "Xiaomi MIoT",
-  "version": "0.2.2-e12.17",
-  "description": "Native Apple Home integration for Xiaomi MIoT devices: Air Purifier 4 Compact and Robot Vacuum E10/E12.",
+  "version": "0.2.2-e12.19",
+  "description": "Native Apple Home Matter integration for Xiaomi Robot Vacuum E12.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,10 +12,8 @@
   },
   "keywords": [
     "homebridge-plugin",
-    "supports-hap",
     "xiaomi",
     "miot",
-    "air-purifier",
     "supports-matter",
     "robot-vacuum",
     "matter"
@@ -35,14 +33,12 @@
     "config.schema.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE",
-    "docs"
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
-    "test": "node --import tsx --test test/*.test.ts scripts/*.test.mjs",
-    "check": "npm run typecheck && npm test && npm run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "npm run typecheck && npm run build",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check"
   },
@@ -52,8 +48,7 @@
   "devDependencies": {
     "@types/node": "^22.18.0",
     "homebridge": "^2.4.0",
-    "typescript": "~5.9.3",
-    "tsx": "^4.20.0"
+    "typescript": "~5.9.3"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",

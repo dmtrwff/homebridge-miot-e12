@@ -42,20 +42,17 @@
               "title": "Name in Apple Home",
               "type": "string",
               "minLength": 1,
-              "default": "Xiaomi device",
+              "default": "Xiaomi Robot Vacuum E12",
               "maxLength": 64
             },
             "model": {
               "title": "Device model",
               "type": "string",
-              "default": "zhimi.airp.cpa4",
+              "default": "xiaomi.vacuum.b112gl",
               "enum": [
-                "zhimi.airp.cpa4",
-                "xiaomi.airp.cpa4",
-                "xiaomi.vacuum.b112",
                 "xiaomi.vacuum.b112gl"
               ],
-              "description": "Model identifier from Xiaomi Home. The E10 and E12 require Matter enabled in Homebridge 2.4+ and separate Matter pairing in Apple Home."
+              "description": "Xiaomi Robot Vacuum E12 model identifier. Matter must be enabled in Homebridge 2.4+ and paired separately in Apple Home."
             },
             "host": {
               "title": "Local IPv4 address",
@@ -81,19 +78,13 @@
             "id": {
               "title": "Stable identifier (optional)",
               "type": "string",
-              "description": "For manual setup, enter a value such as living-room-purifier to preserve the device in Apple Home if its IP changes. Keep this identifier unchanged.",
+              "description": "For manual setup, enter a stable value such as living-room-vacuum to preserve the device in Apple Home if its IP changes. Keep this identifier unchanged.",
               "maxLength": 128
             },
             "enabled": {
               "title": "Enable device",
               "type": "boolean",
               "default": true
-            },
-            "exposeDisplay": {
-              "title": "Expose purifier display in Apple Home",
-              "type": "boolean",
-              "default": false,
-              "description": "Air purifiers only. Adds a light control for the display: 0% Off, 50% Dim, 100% On. Apple Home may include it in lighting commands. Disabled by default; it does not control the purifier motor."
             }
           }
         }

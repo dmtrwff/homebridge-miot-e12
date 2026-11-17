@@ -1,6 +1,6 @@
-import type { MiotProperty } from './profiles.js';
+import type { MiotProperty } from './miot-property.js';
 
-export const SUPPORTED_VACUUM_MODELS: readonly string[] = ['xiaomi.vacuum.b112', 'xiaomi.vacuum.b112gl'];
+export const SUPPORTED_VACUUM_MODELS: readonly string[] = ['xiaomi.vacuum.b112gl'];
 
 export interface VacuumState {
   readonly status: number;
@@ -58,10 +58,9 @@ export interface VacuumProfile {
   readonly nonErrorFaultCodes: readonly number[];
 }
 
-// Verified against Xiaomi's MIoT instance API on 2026-09-17.
-const E10_PROFILE: VacuumProfile = {
-  productName: 'Xiaomi Robot Vacuum E10',
-  source: 'https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-b112:1',
+const BASE_E12_PROFILE: VacuumProfile = {
+  productName: 'Xiaomi Robot Vacuum E12',
+  source: 'https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-b112gl:1',
   properties: {
     status: { siid: 2, piid: 1, format: 'integer', min: 0, max: 8 },
     // The specification supplies a range, not an error-code dictionary.
@@ -82,12 +81,7 @@ const E10_PROFILE: VacuumProfile = {
   },
   pauseStatuses: [2],
   identify: { siid: 4, piid: 1, format: 'integer', min: 1, max: 1, writable: true },
-  // E10 field report (2026-09-17): 2105 at 100% battery, no Xiaomi Home fault.
-  // Consistent with python-miio's Viomi "Fully charged" indication:
-  // https://github.com/rytilahti/python-miio/issues/789
-  // This is an observed E10 exception, not an official error-code dictionary.
-  // Do not assume that every code >= 2000 is harmless on this model.
-  nonErrorFaultCodes: [0, 2105],
+  nonErrorFaultCodes: [0, 2103, 2104, 2105],
   statuses: {
     0: 'Sleeping', 1: 'Idle', 2: 'Paused', 3: 'Returning to dock',
     4: 'Charging', 5: 'Vacuuming', 6: 'Vacuuming and mopping', 7: 'Mopping', 8: 'Updating firmware',
@@ -95,13 +89,9 @@ const E10_PROFILE: VacuumProfile = {
   faults: {},
 };
 
-// Verified independently against Xiaomi's published E12 MIoT instance on
-// 2026-10-16. Its addresses and ranges currently match the E10, but keep a
-// separate profile so model-specific firmware behavior can diverge safely.
+// Verified against Xiaomi's published E12 MIoT instance and physical hardware.
 const E12_PROFILE: VacuumProfile = {
-  ...E10_PROFILE,
-  productName: 'Xiaomi Robot Vacuum E12',
-  source: 'https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-b112gl:1',
+  ...BASE_E12_PROFILE,
   // E12 field reports: 2103 while status 4 reported normal charging at 22%
   // battery (2026-10-16), and 2105 while status 4 reported fully charged at
   // 100% (2026-10-17). The shared B112-family table also identifies 2104 as
@@ -141,7 +131,6 @@ const E12_PROFILE: VacuumProfile = {
 };
 
 const VACUUM_PROFILES: Readonly<Record<string, VacuumProfile>> = {
-  'xiaomi.vacuum.b112': E10_PROFILE,
   'xiaomi.vacuum.b112gl': E12_PROFILE,
 };
 

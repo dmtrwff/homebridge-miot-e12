@@ -1,186 +1,57 @@
 # homebridge-miot-e12
 
-A community fork of [`@twinforce/homebridge-miot`](https://github.com/TwinForceIT/homebridge-miot) focused on native Apple Home Matter support for Xiaomi Robot Vacuum E10 and E12. Runtime control is local through miIO/MIoT; Xiaomi Cloud is used only during setup.
+Homebridge plugin for the **Xiaomi Robot Vacuum E12** (`xiaomi.vacuum.b112gl`). It publishes the robot as a native Matter Robotic Vacuum Cleaner in Apple Home and controls it locally over miIO/MIoT. Xiaomi Cloud is used only during setup to discover the local address and token.
 
-> This fork is published independently as [`homebridge-miot-e12`](https://www.npmjs.com/package/homebridge-miot-e12). It is maintained at [`dmtrwff/homebridge-miot-e12`](https://github.com/dmtrwff/homebridge-miot-e12) and is not an official TwinForceIT, Xiaomi, Apple, or Homebridge release.
+This build intentionally supports only the E12. Xiaomi Robot Vacuum E10 and Xiaomi air purifiers are rejected by configuration validation and cloud import.
 
-| Device | MIoT model | Apple Home integration |
+## Features
+
+- Start, stop, pause, resume, and return to dock
+- Vacuum, vacuum-and-mop, and mop tasks
+- Silent, Standard, Medium, and Turbo suction presets
+- Low, Medium, and High water-flow presets
+- Battery, charging, activity, consumable reminders, and native Matter errors
+- Local polling and control after setup
+- Stable Matter identity across IP and token changes when `did` or `id` is preserved
+
+The E12 implementation has been exercised on physical `xiaomi.vacuum.b112gl` hardware, including Matter pairing, cleaning controls, docking, Locate, charging indications, and missing-mop recovery.
+
+The four combined vacuum-and-mop presets use these exact E12 settings:
+
+| Preset | Suction | Water |
 | --- | --- | --- |
-| Xiaomi Smart Air Purifier 4 Compact | `zhimi.airp.cpa4`, `xiaomi.airp.cpa4` | HomeKit Air Purifier, air quality, and filter maintenance |
-| Xiaomi Robot Vacuum E10 | `xiaomi.vacuum.b112` | Matter Robotic Vacuum Cleaner |
-| Xiaomi Robot Vacuum E12 | `xiaomi.vacuum.b112gl` | Matter Robotic Vacuum Cleaner |
-
-The purifier uses standard HomeKit services. The E10 and E12 use Homebridge's native Matter robot vacuum support, so Apple Home recognizes them as robot vacuums. These devices are not represented by custom switches.
-
-**Validation status:** the E12 implementation has been exercised on a physical `xiaomi.vacuum.b112gl`, including Matter pairing, start, pause, resume, docking, cleaning-mode changes, suction, water level, Locate, charging state, and missing-mop recovery. Automated tests cover protocol validation, delayed firmware responses, faults, polling, recovery, and the real Homebridge Matter endpoint. E10 support originates upstream and retains its existing field coverage. Apple Home presentation can vary by OS and home-hub version.
-
-## Air Purifier 4 Compact in Apple Home
-
-| Feature | Native HomeKit mapping |
-| --- | --- |
-| Power | `AirPurifier.Active` |
-| Automatic / manual control | `TargetAirPurifierState` — Auto / Manual |
-| Current operation | `CurrentAirPurifierState` — inactive / idle / purifying |
-| Speed / Sleep | `RotationSpeed`: 0% Off, 1% Sleep, 2–100% for 15 Favorite levels |
-| Display brightness (optional) | Linked `Lightbulb`: 0% Off, 50% Dim, 100% On |
-| Physical button lock | `LockPhysicalControls` |
-| PM2.5 | `AirQualitySensor.PM2_5Density`, µg/m³ |
-| Air quality category | `AirQuality` |
-| Remaining filter life | `FilterMaintenance.FilterLifeLevel`, 0–100% |
-| Filter replacement required | `FilterChangeIndication` at 0% |
-| Fault | Standard `StatusFault` on the air quality service, with details in Homebridge logs |
-| Lost connection | A HomeKit communication error instead of returning stale state as current |
-
-The speed slider selects **Off at 0%**, the actual Xiaomi **Sleep mode at 1%**, and **Favorite (manual) at 2–100%**. Sleep preserves the previously chosen Favorite level. All 15 Favorite levels remain available, so the reported manual percentage may be rounded. These percentages are control positions, not a measured percentage of power consumption. In Auto, the displayed speed is an estimate based on motor RPM.
-
-HomeKit's [native purifier mode selector](https://developer.apple.com/documentation/homekit/hmcharacteristicvaluetargetairpurifierstate) supports only Auto and Manual. A third named Sleep option cannot be added to Apple Home through that service. Sleep is shown as Manual with the slider at 1%, including when selected in Xiaomi Home. Repeating Manual while already in Sleep preserves Sleep; move the slider above 1% to select Favorite. There is no separate Sleep switch.
-
-Display control is **disabled by default**. In the plugin settings, open **Add manually or edit configuration**, find the purifier, and enable **Expose purifier display in Apple Home**; save and restart the bridge. Alternatively, add `"exposeDisplay": true` to that purifier's device entry. This adds a linked standard light named **[Purifier name] Display**, because HomeKit does not provide a display-brightness control within its AirPurifier service. Apple Home treats it as a light, including in lighting commands; the purifier itself remains an AirPurifier.
-
-The display has three hardware settings: **0% Off, 50% Dim, 100% On**. Intermediate requests map to Dim for 1–50% and On above 50%; the actual setting is read back and reported. Turning the display off does not turn the purifier off, and turning the display on does not start purification. During the current bridge session, turning it back on restores the last observed nonzero brightness. Without such a reading after a restart, On selects full brightness. Changes made on the purifier or in Xiaomi Home are picked up by polling. Disabling the option removes only the display control after restarting, preserving the purifier's pairing.
-
-HomeKit does not provide a text error list or a `StatusFault` characteristic directly on the AirPurifier service. Fault code 2 (motor), code 3 (dust sensor), and unknown codes are logged only when they change; fault clearance and connectivity recovery are also logged. A dust sensor fault reports unknown air quality and makes the PM2.5 reading return an error.
-
-Apple Home's presentation depends on its version. Standard filter and fault characteristics may appear in accessory details or in other HomeKit clients. A separate text message or Apple push notification is not guaranteed. Reset the filter in Xiaomi Home or on the device; the plugin does not expose a reset action that could accidentally erase filter wear.
-
-The `AirQuality` category is the plugin's display policy, using PM2.5 thresholds of 12 / 35 / 55 / 150 µg/m³. It is neither Xiaomi's calibrated AQI nor a health assessment. Unsupported temperature, humidity, and PM10 readings are not created.
-
-## Robot Vacuum E10 and E12 in Apple Home
-
-Apple Home's native robot vacuum support uses **Matter**. The E10 and E12 are published through Homebridge's Matter integration as **Robotic Vacuum Cleaners**. Each has its own pairing code and is not added through the purifier's HomeKit bridge pairing.
-
-| Feature | Native Matter mapping |
-| --- | --- |
-| Start cleaning | `RvcRunMode` |
-| Pause / resume | `RvcOperationalState` commands |
-| Stop cleaning / return to dock | `RvcRunMode` Idle / `RvcOperationalState.GoHome` |
-| Vacuum, vacuum and mop, or mop | `RvcCleanMode` |
-| Suction and water levels | Native `RvcCleanMode` presets |
-| Actual activity | `RvcOperationalState` — stopped, running, paused, returning to dock, charging, or error |
-| Battery percentage and charging | `PowerSource` |
-| Find the robot | Audible Matter `Identify` |
-| Device fault | Native operational error, with the Xiaomi error code in Homebridge logs |
-| Lost connection | Native operational error and unknown battery; commands fail until communication recovers |
-
-**Pause is mapped to Xiaomi's stop-sweeping action to pause in place. Stop/Idle sends the return-to-dock action.** Start and Resume use the robot's start-cleaning action. State is read back from the robot rather than assumed from a command being accepted. Change the cleaning mode while the robot is idle or charging and has no fault; actual setting changes during cleaning, pause, return to dock, or a firmware update are rejected. Repeating settings already reported by the robot succeeds without sending another command. Repeating the Cleaning run mode preserves a physical pause; use the native Resume command to resume.
-
-Xiaomi may acknowledge a command before its properties reflect the change. The plugin accepts normal and pending acknowledgements, then polls the affected property with a **three-second settling budget** shared by the whole preset. It never repeats the action or write. Individual network requests and the final full state read can add time. A rejected or unconfirmed command still fails, but a successful fresh state read keeps the robot reachable and preserves its actual activity and battery. A failed state read still produces a communication error.
-
-The supported vacuum models are `xiaomi.vacuum.b112` (E10) and `xiaomi.vacuum.b112gl` (E12). Similar product names such as E10C or variants with another MIoT identifier must not be assumed compatible. The published specifications supply numeric fault codes without a complete description for each value. The plugin preserves raw codes and treats unrecognized nonzero codes as native faults. Hardware observations establish `2105` as a fully charged indication on both E10 and E12, and `2103` as E12's normal charging indication; the B112-family table also identifies E12 code `2104` as fully charged. These indications do not create operational errors on their respective models. Activity and battery still come from their own properties, not from a fault-field indication. Apple Home decides how native modes, errors, and battery details are displayed. A communication failure is exposed as a native operational error; the Homebridge 2.4 API does not let this plugin guarantee an Apple Home “No Response” badge for the standalone robot.
-
-The native cleaning-mode menu includes 14 choices:
-
-| Choices | Settings changed |
-| --- | --- |
-| Vacuum / Vacuum and mop / Mop | Cleaning task only; existing suction and water settings are preserved |
-| Vacuum: Silent / Standard / Medium / Turbo | Vacuuming with the selected suction level |
-| Vacuum and mop: Silent / Standard / Maximum / Turbo | Combined presets: Silent+Low, Standard+Medium, Medium+High, or Turbo+High |
-| Mop: water Low / Medium / High | Mopping with the selected water level |
-
-These are native cleaning modes, without additional switches or a simulated fan slider. Levels retain the numerical names from Xiaomi's specification. A selected preset remains reported only while the robot's actual settings match it; external changes can return the displayed selection to the corresponding base task. Apple Home may present a subset of native mode details, depending on its version.
-
-Filter, brush, and mop life percentages remain in Xiaomi Home. The plugin logs a replacement reminder when a consumable reaches 0%, without resetting its wear. Room selection and maps are not exposed for this model.
-
-### If Apple Home stays on “Updating” after inactivity
-
-The plugin reads the robot in the background at `pollInterval` even when no phone is using Apple Home. Matter manages controller subscriptions and their keepalives. An Apple Home “Updating” tile does not by itself mean the robot reports firmware-update status, and a successful **Play Sound to Locate** does not prove that passive subscription reports are reaching that controller. A similar Identify-dependent symptom was reported in [Homebridge issue #3951](https://github.com/homebridge/homebridge/issues/3951); that report does not establish the cause in every installation.
-
-To investigate a recurrence, enable **Homebridge debug mode**, restart the bridge, and capture the time when the tile becomes stuck before issuing another command. The plugin logs:
-
-- `state read #…`: a successful fresh Xiaomi reading, including activity, cleaning mode, battery, and raw fault; its update has been submitted to Homebridge.
-- `Matter snapshot`: the operational state, run mode, and battery currently readable from Homebridge's live Matter endpoint. The battery field uses Matter's half-percent units: `200` means 100%. This snapshot is not an acknowledgement from Apple Home.
-
-Compare the tile on another Apple device at the same time, if available. Preserve nearby Matter subscription warnings such as `reported invalid by peer` and the plugin's refresh lines. Include Homebridge, iOS/macOS, and home hub versions, excluding tokens and pairing codes. If Xiaomi reads and Matter snapshots continue while a tile remains stuck, investigate the controller/subscription path instead of changing the robot's state. Do not reset the pairing as the first diagnostic step.
-
-A field capture also revealed an independent error-recovery defect: the Matter endpoint retained the previous error description after its error code returned to zero. Recovery now explicitly clears the description. See the [investigation and confirmed fix](docs/UPDATING-INVESTIGATION.md); whether it resolves the affected iPhone tile still needs field testing.
-
-The idle refresh path is covered by six-hour simulated polling and recovery tests. Reproducing and resolving an Apple Home rendering/subscription failure still requires observations from an affected controller.
-
-### Enable Matter and pair the vacuum
-
-1. Install the plugin, import the E10 or E12 from Xiaomi Cloud or add it manually, and save the configuration.
-2. Enable Matter on the bridge running **Xiaomi MIoT**: use **Settings → Matter Settings** for the main bridge, or **Plugins → Xiaomi MIoT → Child Bridge Settings → Enable Matter** for a child bridge. Assign an available Matter port and restart that bridge. Keep HomeKit enabled for an existing purifier. See [Homebridge's Matter setup guide](https://github.com/homebridge-plugins/homebridge-matter/wiki/Enabling-Matter).
-3. Find the **vacuum's own Matter pairing QR code or PIN** in Homebridge's Matter pairing information. In Apple Home, choose **Add Accessory** and scan that code. Robot vacuums receive a [separate pairing code](https://github.com/homebridge-plugins/homebridge-matter/wiki/Section-12-Robotic), so scanning the main bridge's QR code does not pair the robot.
-4. Assign the robot to a room in Apple Home and test its native cleaning controls.
-
-Matter must be enabled on the actual main or child bridge that runs this plugin. The plugin does not create a substitute HomeKit switch when Matter is disabled. Homebridge currently describes its Matter implementation as experimental; keep that in mind when upgrading Homebridge. Back up the Homebridge Matter storage together with `xiaomi-miot-matter-identities.json` in the Homebridge storage directory. This identity file contains no credentials and retains inactive mappings so re-enabling a device can reuse its pairing identity.
+| Silent | Silent (`1`) | Low (`1`) |
+| Standard | Standard (`2`) | Medium (`2`) |
+| Maximum | Medium (`3`) | High (`3`) |
+| Turbo | Turbo (`4`) | High (`3`) |
 
 ## Requirements
 
-- Homebridge **2.4.0 or later in the 2.x series**; the current suite is tested with Homebridge **2.4.0** and HAP-NodeJS **2.2.2**.
-- Node.js **22.12+**, **24**, or **26**; local tests use Node 22.23.1. CI covers all three major versions.
-- A current Homebridge UI for guided setup, or manual editing of `config.json`.
-- For the E10 or E12, Matter enabled in Homebridge and an Apple Home version supporting robot vacuums; Apple introduced this in [iOS 18.4](https://support.apple.com/en-us/121161). Keep your Apple devices and home hub up to date.
-- For Matter, working IPv6 and local multicast discovery between Homebridge and Apple Home. Docker on Linux should use host networking; exposing only the web UI port is insufficient.
-- Each device must already be paired with Xiaomi Home and reachable from Homebridge over UDP **54321**.
-- A fixed IPv4 address or DHCP reservation. Container and VLAN networking must allow traffic to the device.
-- Internet access during login and import. After a device is saved, runtime control does not depend on Xiaomi Cloud.
+- Node.js 22.12+, 24, or 26
+- Homebridge 2.4+
+- Matter enabled on the main or child bridge running this plugin
+- Apple Home with robot-vacuum support
+- E12 already paired with Xiaomi Home and reachable from Homebridge over UDP port 54321
+- A reserved local IPv4 address for the robot
 
-## Installation of this fork
+## Install
 
-Install the maintained E12 fork directly from npm:
-
-```sh
-sudo npm install -g homebridge-miot-e12
+```bash
+npm install -g homebridge-miot-e12
 ```
 
-Use the npm executable belonging to the same Node.js installation as Homebridge. For the macOS installation used during E12 hardware testing, that command is:
+Then open the plugin settings in Homebridge and either sign in to Xiaomi with the QR flow or add the E12 manually.
 
-```sh
-sudo /usr/local/bin/npm install -g homebridge-miot-e12
-sudo hb-service restart
-```
+## Apple Home pairing
 
-Do not install this fork together with `@twinforce/homebridge-miot`: both packages register the same Homebridge platform. Preserve the existing `platform: "XiaomiMiot"` configuration, accessory cache, Matter storage, and `xiaomi-miot-matter-identities.json` when switching packages.
+1. Save the E12 configuration and restart Homebridge.
+2. Enable Matter for the bridge running the plugin.
+3. Open the Homebridge Matter pairing screen for the E12 accessory.
+4. Add the displayed Matter code in Apple Home.
 
-To build an installable archive from source instead:
-
-On a computer with Git, Node.js and npm:
-
-```sh
-git clone https://github.com/dmtrwff/homebridge-miot-e12.git
-cd homebridge-miot-e12
-npm ci
-npm run check
-npm pack
-```
-
-Copy the generated `homebridge-miot-e12-0.2.2-e12.17.tgz` to the Homebridge host. For the macOS installation used during E12 hardware testing:
-
-```sh
-sudo /usr/local/bin/npm install -g --force ./homebridge-miot-e12-0.2.2-e12.17.tgz
-sudo hb-service restart
-```
-
-Other managed installations and Docker deployments may use a different plugin directory; install the package through that environment rather than an unrelated global npm directory.
-
-To update a source checkout later:
-
-```sh
-git pull --ff-only
-npm ci
-npm run check
-npm pack
-```
-
-Install the newly generated archive and restart Homebridge. Re-pairing the vacuum is not required when its configuration and Matter identity storage are preserved.
-
-## Setup through Xiaomi Cloud
-
-1. In the plugin settings, choose the region used in Xiaomi Home; for Poland, this is usually **Europe (de)**.
-2. Start Xiaomi login. Scan the QR code in Xiaomi Home and approve the login. A link to Xiaomi's login page is also available.
-3. Select a supported device from the discovered list and save the selection.
-4. Restart Homebridge. The purifier appears on the paired HomeKit bridge. For the E10 or E12, complete the separate Matter pairing described above.
-
-The list includes unsupported models, but they cannot be imported. If Xiaomi does not return a local IP address or token, use manual configuration. Importing a device again updates its address and token while preserving its chosen name, stable identifier, and enabled state.
-
-The plugin does not write account passwords, cookies, or sessions to disk. The setup session expires after 15 minutes and is cleared after import, logout, or closing the panel. Local device tokens are stored as plain text in `config.json`, like other Homebridge secrets; consider this when sharing configurations or backups. Tokens are neither logged nor stored in the accessory cache.
-
-Xiaomi can change its undocumented login flow and token availability. If additional account verification is requested, complete it in Xiaomi Home and start a new login. Manual configuration remains independent of this flow.
+The robot is paired separately from Homebridge's regular HomeKit bridge.
 
 ## Manual configuration
-
-Use the manual configuration option in the plugin settings, or add a block to the `platforms` array in your existing Homebridge configuration:
 
 ```json
 {
@@ -189,81 +60,42 @@ Use the manual configuration option in the plugin settings, or add a block to th
   "pollInterval": 15,
   "devices": [
     {
-      "name": "Living room purifier",
-      "model": "zhimi.airp.cpa4",
-      "host": "192.168.1.50",
-      "token": "0123456789abcdef0123456789abcdef",
-      "id": "living-room-purifier",
-      "enabled": true
-    },
-    {
-      "name": "Robot vacuum",
+      "name": "Robot Vacuum E12",
       "model": "xiaomi.vacuum.b112gl",
-      "host": "192.168.1.51",
-      "token": "abcdef0123456789abcdef0123456789",
-      "id": "robot-vacuum-e12",
-      "enabled": true
+      "host": "192.168.1.50",
+      "token": "00112233445566778899aabbccddeeff",
+      "id": "living-room-e12"
     }
   ]
 }
 ```
 
-Both tokens above are examples. Supply each device's own 32-character LAN token, which is different from your Xiaomi account password. Use the device's actual model identifier. The E12 entry also requires Matter to be enabled and paired as described above.
+Keep `id` unchanged when the IP address or token changes. Cloud import supplies a `did`, which serves the same identity-preservation purpose.
 
-- `pollInterval`: 10–300 seconds, default 15. Each polling cycle starts after the previous cycle completes.
-- `id`: an optional stable identifier of your choice. Set it when first configuring a device manually and keep it when changing the IP address.
-- `did`: Xiaomi's device identifier, populated during import. Without `id` or `did`, accessory identity depends on the IP address.
-- `enabled: false`: stops publishing the device after a restart while retaining its configuration entry. A HomeKit purifier is removed from its bridge; a separately paired Matter robot may remain as an unavailable tile in Apple Home.
+## Charging indications
 
-Importing an existing manually configured device at the same address preserves its accessory identity. A device that stops responding is not removed. Deleting its entry or disabling it stops publication after a restart and may affect automations. To permanently remove a separately paired E10 or E12, also remove its accessory in Apple Home. The plugin retains its identity mapping to support re-enabling the same device; preserve that file and Homebridge's Matter storage in backups.
+Xiaomi uses status `4` for the robot while it is on the charging dock. Codes `2103`, `2104`, and `2105` in the E12 fault field are charging/full-charge indications rather than failures. The plugin preserves these raw values in diagnostics without publishing a false HomeKit error. Matter has no separate `Fully Charged` operational state, so Apple Home may continue to display `Charging` at 100%.
 
-## Architecture and development
+## Limitations
 
-- `src/platform.ts`: Homebridge lifecycle, accessory restoration, and reconciliation.
-- `src/config.ts`: configuration validation and stable device identity.
-- `src/devices/registry.ts`: registry of device families and their HomeKit or Matter adapters.
-- `src/devices/profiles.ts`: CPA4 protocol definitions, including property addresses, ranges, and fault codes.
-- `src/devices/purifier.ts`: purifier logic, command queue, polling, and write confirmation.
-- `src/devices/vacuum-profile.ts` and `src/devices/vacuum.ts`: E10/E12 MIoT properties, fault catalog, actions, and state validation.
-- `src/matter/vacuum-accessory.ts`: the native Matter robot vacuum adapter.
-- `src/matter/vacuum-modes.ts`: native cleaning presets and their mapping to actual device settings.
-- `src/matter/identity-store.ts`: persistent Matter identity tracking and accessory reconciliation.
-- `src/homekit/purifier-accessory.ts`: mapping to standard HAP services.
-- `src/miio/`: independent UDP transport, encryption, response validation, and timeouts.
-- `src/cloud/`: temporary login and device discovery, independent of the Homebridge platform.
-- `homebridge-ui/`: setup UI and isolated import session.
+- Maps, room selection, schedules, and consumable resets remain in Xiaomi Home.
+- Apple Home presentation depends on the controller and home-hub versions.
+- Unknown nonzero Xiaomi fault codes remain visible as native operational errors.
 
-To add a device family, implement a profile/controller and a native accessory adapter, register it in `registry.ts`, and update the model list in the configuration schema. Keep device-specific logic out of the platform and transport. Use native services appropriate to the device's actual functions.
+## Development
 
-CPA4 properties are read one at a time because of reported firmware problems with grouped reads. Reads and writes are queued; writes are confirmed by reading back state. Reads may be retried after a new handshake. A write whose reply is lost is not automatically repeated.
-
-```sh
-npm run typecheck
-npm test
-npm run build
-npm pack --dry-run
+```bash
+npm ci
+npm run check
 ```
 
-Tests cover real HAP classes, a simulated UDP device, cryptographic vectors, failures and recovery, import, session expiry, and stable identity. Vacuum tests cover MIoT commands, authoritative state reads, native Matter controls, faults, battery, and accessory lifecycle. They do not replace testing with physical devices. See [docs/HARDWARE-TEST.md](docs/HARDWARE-TEST.md) for the acceptance checklist.
+The check runs TypeScript validation and the production build. Generated output is written to `dist/`, which is intentionally excluded from Git and created automatically during npm packaging.
 
-## Releases
+## References
 
-GitHub Actions runs the supported Node.js test matrix for this fork. Automatic npm publishing is intentionally restricted to the original `TwinForceIT/homebridge-miot` repository, so merges in this fork cannot publish into the original author's namespace. Until this fork adopts its own package name and release process, build the `.tgz` archive locally using the installation instructions above.
-
-## Technical references
-
-- [Xiaomi Robot Vacuum E10 MIoT specification](https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-b112:1)
 - [Xiaomi Robot Vacuum E12 MIoT specification](https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:vacuum:0000A006:xiaomi-b112gl:1)
-- [Homebridge native Matter robot vacuums](https://github.com/homebridge-plugins/homebridge-matter/wiki/Section-12-Robotic)
-- [Homebridge Matter setup](https://github.com/homebridge-plugins/homebridge-matter/wiki/Enabling-Matter)
-- [Apple Home robot vacuum support in iOS 18.4](https://support.apple.com/en-us/121161)
-- [Xiaomi CPA4 v2 specification](https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:air-purifier:0000A007:xiaomi-cpa4:2)
-- [Zhimi CPA4 v1 specification](https://miot-spec.org/miot-spec-v2/instance?type=urn:miot-spec-v2:device:air-purifier:0000A007:zhimi-cpa4:1)
-- [HAP-NodeJS standard service definitions](https://github.com/homebridge/HAP-NodeJS/blob/latest/src/lib/definitions/ServiceDefinitions.ts)
-- [Homebridge 2 requirements](https://github.com/homebridge/homebridge/wiki/Updating-To-Homebridge-v2.0)
-- [Homebridge Plugin UI Utils](https://github.com/homebridge/plugin-ui-utils)
-- [Homebridge Docker](https://github.com/homebridge/docker-homebridge)
-- [Homebridge service plugin management](https://github.com/homebridge/homebridge-config-ui-x/blob/latest/src/bin/hb-service.ts)
-- [Reference miIO protocol implementation](https://github.com/rytilahti/python-miio/blob/master/miio/protocol.py)
-- [Reference Xiaomi QR login and token extraction](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor)
-- [Reference Xiaomi Cloud and home list API](https://github.com/al-one/hass-xiaomi-miot/blob/master/custom_components/xiaomi_miot/core/xiaomi_cloud.py)
+- [Homebridge Matter setup guide](https://github.com/homebridge-plugins/homebridge-matter/wiki/Enabling-Matter)
+
+## License
+
+MIT

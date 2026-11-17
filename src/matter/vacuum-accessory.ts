@@ -120,7 +120,7 @@ export class VacuumAccessory {
             if (!request || ![0, 1].includes(request.newMode)) {
               throw this.constraintError('Unsupported vacuum run mode.');
             }
-            // E10's stop-sweeping action pauses in place. Idle must end cleaning,
+            // E12's stop-sweeping action pauses in place. Idle must end cleaning,
             // so Stop/Idle returns to the dock; the native Pause command is separate.
             await this.command(async () => {
               // Use a fresh reading within the serialized command. Reasserting

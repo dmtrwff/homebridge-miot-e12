@@ -226,10 +226,7 @@ async function importDevices() {
     await homebridge.savePluginConfig();
     await renderConfigured();
     await endSession();
-    const includesRobot = devices.some((device) => device.model === 'xiaomi.vacuum.b112');
-    feedback(includesRobot
-      ? 'Devices saved. Enable Matter on the bridge running this plugin, restart it, and add the E10 in Apple Home using the robot’s own Matter pairing code.'
-      : 'Devices saved. Restart Homebridge to see them in Apple Home.', 'success');
+    feedback('E12 saved. Enable Matter on the bridge running this plugin, restart it, and add the robot in Apple Home using its own Matter pairing code.', 'success');
   } catch (error) {
     showError(error);
   } finally {

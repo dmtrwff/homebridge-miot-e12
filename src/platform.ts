@@ -53,32 +53,10 @@ export class XiaomiMiotPlatform implements DynamicPlatformPlugin {
       this.log.error(`Configuration error: ${error instanceof Error ? error.message : 'invalid configuration'}`);
       return;
     }
-    const active = new Set<string>();
-    for (const device of parsed.devices) {
-      const definition = getDeviceDefinition(device.model)!;
-      if (definition.protocol !== 'hap') continue;
-      const identity = deviceIdentity(device);
-      // A preserved UUID can still contain the IP address from a previous setup.
-      // Identity metadata takes precedence over that historical UUID, so a new
-      // occupant of the old address cannot steal the existing HomeKit accessory.
-      const existing = this.findCached(identity, active, this.cached)
-        ?? (identity !== `host:${device.host}` ? this.findCached(`host:${device.host}`, active, this.cached) : undefined);
-      const accessory = existing ?? new this.api.platformAccessory(device.name, this.allocateUuid(identity, active, this.cached), definition.category(this.api));
-      active.add(accessory.UUID);
-      accessory.displayName = device.name;
-      // Keep only identity metadata in Homebridge's cache, never credentials.
-      accessory.context = { model: device.model, identity };
-      const transport = new MiioTransport(device.host, device.token);
-      const controller = definition.create(this.api, this.log, accessory, device, transport, parsed.pollInterval);
-      this.controllers.push(controller);
-      if (existing) this.api.updatePlatformAccessories([accessory]);
-      else this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      controller.start();
-    }
-    // Invalid configuration returns before pruning. Connectivity never removes accessories.
-    if (Array.isArray(this.config.devices)) {
-      const removed = [...this.cached.values()].filter(accessory => !active.has(accessory.UUID));
-      if (removed.length) this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, removed);
+    // This E12-only build publishes no bridged HAP accessories. Remove cached
+    // accessories left by older builds after the new configuration validates.
+    if (Array.isArray(this.config.devices) && this.cached.size) {
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [...this.cached.values()]);
     }
     void this.launchMatter(parsed.devices, parsed.pollInterval).catch(() => {
       this.log.error('Could not initialize Matter devices. Check the Homebridge Matter logs.');

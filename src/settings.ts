@@ -1,4 +1,4 @@
-export const PLUGIN_NAME = '@twinforce/homebridge-miot';
+export const PLUGIN_NAME = 'homebridge-miot-e12';
 export const PLATFORM_NAME = 'XiaomiMiot';
 
 // Accessory UUIDs must survive package renames and reinstallations.
