@@ -1,8 +1,8 @@
 {
   "name": "homebridge-miot-e12",
-  "displayName": "Xiaomi MIoT",
-  "version": "0.2.2-e12.19",
-  "description": "Native Apple Home Matter integration for Xiaomi Robot Vacuum E12.",
+  "displayName": "Xiaomi Robot Vacuum E12",
+  "version": "0.2.2-e12.20",
+  "description": "Homebridge Matter plugin for Xiaomi Robot Vacuum E12 with local control and native Apple Home integration.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

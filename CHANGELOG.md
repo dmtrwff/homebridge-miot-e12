@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clarify the npm display name and description for the E12-only Matter plugin.
 - Support only Xiaomi Robot Vacuum E12 (`xiaomi.vacuum.b112gl`).
 - Remove E10 and air-purifier registration, configuration, cloud-import eligibility, UI code, implementation modules, and documentation.
 - Use the verified E12 vacuum-and-mop presets: Silent+Low, Standard+Medium, Medium+High (Maximum), and Turbo+High.
