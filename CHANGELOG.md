@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Normalize npm repository metadata and tighten the public E12-only description.
 - Publish exactly four Matter cleaning modes—Silent, Standard, Maximum, and Turbo—instead of the previous 14-entry task/level matrix.
 - Clarify the npm display name and description for the E12-only Matter plugin.
 - Support only Xiaomi Robot Vacuum E12 (`xiaomi.vacuum.b112gl`).

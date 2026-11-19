@@ -2,7 +2,7 @@
 
 Homebridge Matter plugin for the **Xiaomi Robot Vacuum E12** (`xiaomi.vacuum.b112gl`) with local control and native Apple Home integration. It publishes the robot as a Matter Robotic Vacuum Cleaner and uses Xiaomi Cloud only during setup to discover the local address and token.
 
-This build intentionally supports only the E12. Xiaomi Robot Vacuum E10 and Xiaomi air purifiers are rejected by configuration validation and cloud import.
+This build intentionally supports only the exact E12 model identifier `xiaomi.vacuum.b112gl`; every other model is rejected by configuration validation and cloud import.
 
 ## Features
 
