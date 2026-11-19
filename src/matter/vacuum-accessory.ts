@@ -2,7 +2,7 @@ import { setImmediate as nextTurn } from 'node:timers/promises';
 import type { API, Logger, MatterAccessory, MatterAPI } from 'homebridge';
 import { deviceIdentity, type DeviceConfig } from '../config.js';
 import { VacuumCommandError, VacuumDevice, VacuumStateError } from '../devices/vacuum.js';
-import { cleaningModeForState, findCleaningMode, VACUUM_CLEAN_MODES } from './vacuum-modes.js';
+import { cleaningModeForState, DEFAULT_CLEAN_MODE, findCleaningMode, VACUUM_CLEAN_MODES } from './vacuum-modes.js';
 import { getVacuumProfile, hasVacuumFault, vacuumFaultDescription, vacuumFaultKind, type VacuumFaultKind, type VacuumState } from '../devices/vacuum-profile.js';
 import type { MiotTransport } from '../miio/transport.js';
 
@@ -86,7 +86,7 @@ export class VacuumAccessory {
             mode: mode.mode, label: mode.label,
             modeTags: mode.modeTags.map(value => ({ value })),
           })),
-          currentMode: 0,
+          currentMode: DEFAULT_CLEAN_MODE,
         },
         rvcOperationalState: {
           operationalStateList: [
