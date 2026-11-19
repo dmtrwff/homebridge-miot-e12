@@ -22,16 +22,16 @@ const TAG = {
   Mop: 0x4002,
 } as const;
 
-// Keep mode IDs stable across releases: Matter persists the selected ID.
-// Numeric MIoT levels use the names shown by Xiaomi Home for the E12.
+// IDs 0–2 remain valid across the upgrade from the former 14-mode table, so
+// Homebridge can restore a cached CurrentMode without rejecting the endpoint.
 export const VACUUM_CLEAN_MODES: readonly VacuumCleaningMode[] = [
-  { mode: 20, label: 'Silent', settings: { mode: 1, suction: 1, water: 1 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Min, TAG.Quiet, TAG.LowNoise] },
-  { mode: 21, label: 'Standard', settings: { mode: 1, suction: 2, water: 2 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Auto] },
-  { mode: 22, label: 'Maximum', settings: { mode: 1, suction: 3, water: 3 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.DeepClean] },
-  { mode: 23, label: 'Turbo', settings: { mode: 1, suction: 4, water: 3 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Max] },
+  { mode: 0, label: 'Silent', settings: { mode: 1, suction: 1, water: 1 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Min, TAG.Quiet, TAG.LowNoise] },
+  { mode: 1, label: 'Standard', settings: { mode: 1, suction: 2, water: 2 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Auto] },
+  { mode: 2, label: 'Maximum', settings: { mode: 1, suction: 3, water: 3 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.DeepClean] },
+  { mode: 3, label: 'Turbo', settings: { mode: 1, suction: 4, water: 3 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Max] },
 ];
 
-export const DEFAULT_CLEAN_MODE = 21;
+export const DEFAULT_CLEAN_MODE = 1;
 
 export function findCleaningMode(mode: number): VacuumCleaningMode | undefined {
   return VACUUM_CLEAN_MODES.find(candidate => candidate.mode === mode);

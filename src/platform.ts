@@ -114,10 +114,12 @@ export class XiaomiMiotPlatform implements DynamicPlatformPlugin {
         if (!await matter.getAccessoryState(uuid, 'rvcRunMode')) throw new Error('Matter accessory was not published');
         if (this.closed) { created.stop(); return; }
         created.start();
-      } catch {
+      } catch (error) {
         controller?.stop();
         transport.close();
-        this.log.error(`${device.name}: could not initialize the native Matter accessory. Check the Homebridge Matter logs.`);
+        const detail = (error instanceof Error ? error.message : 'Unknown Matter initialization error')
+          .split(device.token).join('[redacted]').replace(/[\r\n]/g, ' ').slice(0, 240);
+        this.log.error(`${device.name}: could not initialize the native Matter accessory (${detail}). Check the Homebridge Matter logs.`);
       }
     }
     if (!this.closed && Array.isArray(this.config.devices)) {
