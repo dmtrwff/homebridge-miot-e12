@@ -22,28 +22,54 @@ const TAG = {
   Mop: 0x4002,
 } as const;
 
-// IDs 0–2 remain valid across the upgrade from the former 14-mode table, so
-// Homebridge can restore a cached CurrentMode without rejecting the endpoint.
+const SUCTION = {
+  1: { label: 'Silent', tags: [TAG.Vacuum, TAG.Min, TAG.Quiet, TAG.LowNoise] },
+  2: { label: 'Standard', tags: [TAG.Vacuum, TAG.Auto] },
+  3: { label: 'Medium', tags: [TAG.Vacuum, TAG.DeepClean] },
+  4: { label: 'Turbo', tags: [TAG.Vacuum, TAG.Max] },
+} as const;
+
+const WATER = { 1: 'Low', 2: 'Medium', 3: 'High' } as const;
+
+const COMBINED = [
+  { label: 'Silent', suction: 1, water: 1 },
+  { label: 'Standard', suction: 2, water: 2 },
+  { label: 'Maximum', suction: 3, water: 3 },
+  { label: 'Turbo', suction: 4, water: 3 },
+] as const;
+
+// Keep the original IDs stable because Matter persists the selected mode.
 export const VACUUM_CLEAN_MODES: readonly VacuumCleaningMode[] = [
-  { mode: 0, label: 'Silent', settings: { mode: 1, suction: 1, water: 1 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Min, TAG.Quiet, TAG.LowNoise] },
-  { mode: 1, label: 'Standard', settings: { mode: 1, suction: 2, water: 2 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Auto] },
-  { mode: 2, label: 'Maximum', settings: { mode: 1, suction: 3, water: 3 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.DeepClean] },
-  { mode: 3, label: 'Turbo', settings: { mode: 1, suction: 4, water: 3 }, modeTags: [TAG.Vacuum, TAG.Mop, TAG.Max] },
+  { mode: 0, label: 'Vacuum', settings: { mode: 0 }, modeTags: [TAG.Vacuum] },
+  { mode: 1, label: 'Vacuum and mop', settings: { mode: 1 }, modeTags: [TAG.Vacuum, TAG.Mop] },
+  { mode: 2, label: 'Mop', settings: { mode: 2 }, modeTags: [TAG.Mop] },
+  ...([1, 2, 3, 4] as const).map(level => ({
+    mode: 9 + level, label: `Vacuum: ${SUCTION[level].label}`,
+    settings: { mode: 0, suction: level }, modeTags: SUCTION[level].tags,
+  })),
+  ...COMBINED.map((preset, index) => ({
+    mode: 20 + index, label: `Vacuum and mop: ${preset.label}`,
+    settings: { mode: 1, suction: preset.suction, water: preset.water },
+    modeTags: [...SUCTION[preset.suction].tags, TAG.Mop],
+  })),
+  ...([1, 2, 3] as const).map(level => ({
+    mode: 29 + level, label: `Mop: water ${WATER[level]}`,
+    settings: { mode: 2, water: level },
+    modeTags: [TAG.Mop, level === 1 ? TAG.Min : level === 2 ? TAG.Auto : TAG.Max],
+  })),
 ];
 
-export const DEFAULT_CLEAN_MODE = 1;
+export const DEFAULT_CLEAN_MODE = 0;
 
 export function findCleaningMode(mode: number): VacuumCleaningMode | undefined {
   return VACUUM_CLEAN_MODES.find(candidate => candidate.mode === mode);
 }
 
-/** Publish only supported Matter IDs, including after an external device change. */
+/** Preserve a selected preset only while every setting it claims is true. */
 export function cleaningModeForState(state: VacuumState, previous?: number): number {
   const settings = previous === undefined ? undefined : findCleaningMode(previous)?.settings;
   if (settings && settings.mode === state.mode
     && (settings.suction === undefined || settings.suction === state.suction)
     && (settings.water === undefined || settings.water === state.water)) return previous!;
-  return VACUUM_CLEAN_MODES.find(candidate => candidate.settings.mode === state.mode
-    && candidate.settings.suction === state.suction
-    && candidate.settings.water === state.water)?.mode ?? DEFAULT_CLEAN_MODE;
+  return state.mode;
 }

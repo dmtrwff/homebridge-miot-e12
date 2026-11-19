@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Restore separate Vacuum and Mop choices while retaining the four verified Vacuum-and-mop presets and all cache-compatible mode IDs.
 - Preserve Matter-cache compatibility by assigning the four cleaning modes IDs `0–3`, and include the redacted initialization error in Homebridge logs.
 - Normalize npm repository metadata and tighten the public E12-only description.
 - Publish exactly four Matter cleaning modes—Silent, Standard, Maximum, and Turbo—instead of the previous 14-entry task/level matrix.

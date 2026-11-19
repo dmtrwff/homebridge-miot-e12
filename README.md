@@ -7,14 +7,16 @@ This build intentionally supports only the exact E12 model identifier `xiaomi.va
 ## Features
 
 - Start, stop, pause, resume, and return to dock
-- Four complete vacuum-and-mop presets: Silent, Standard, Maximum, and Turbo
+- Separate Vacuum, Vacuum and mop, and Mop tasks
+- Four Vacuum suction levels and three Mop water-flow levels
+- Four complete Vacuum-and-mop presets: Silent, Standard, Maximum, and Turbo
 - Battery, charging, activity, consumable reminders, and native Matter errors
 - Local polling and control after setup
 - Stable Matter identity across IP and token changes when `did` or `id` is preserved
 
 The E12 implementation has been exercised on physical `xiaomi.vacuum.b112gl` hardware, including Matter pairing, cleaning controls, docking, Locate, charging indications, and missing-mop recovery.
 
-The only four cleaning modes published to Apple Home use these exact E12 settings:
+The four combined Vacuum-and-mop presets use these exact E12 settings:
 
 | Preset | Suction | Water |
 | --- | --- | --- |
